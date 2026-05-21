@@ -1,0 +1,73 @@
+# --- Dependencies ---
+node_modules/
+
+# --- Frontend (Vite) ---
+dist/
+dist-ssr/
+*.local
+
+# --- Rust / Tauri ---
+src-tauri/target/
+src-tauri/gen/
+
+# --- Zapret (скачивается при установке, не в репозиторий) ---
+zapret/
+**/zapret/
+
+# Бандл пресетов в репо оставляем
+!resources/zapret-extra/
+!resources/zapret-extra/**
+
+# --- Данные приложения ---
+hosts_backups/
+**/hosts_backups/
+
+# --- Сборки и установщики ---
+*.msi
+*.exe
+!src-tauri/icons/
+
+# --- Логи ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Переменные окружения ---
+.env
+.env.*
+!.env.example
+
+# --- ОС ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Редакторы ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- TypeScript / инструменты ---
+*.tsbuildinfo
+.turbo/
+coverage/
+
+# --- Исходник иконки (JPEG с неверным .png) ---
+app-icon.png
+
+# --- Иконки платформ, не используемых в Windows-сборке ---
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+# --- Cursor (локальные артефакты чата) ---
+.cursor/projects/
+assets/
