@@ -77,6 +77,12 @@ export interface ApexTip {
 export interface AppInfo {
   elevated: boolean;
   is_dev_build: boolean;
+  from_autostart: boolean;
+}
+
+export interface AppPrefs {
+  last_strategy_id: string | null;
+  auto_connect_on_autostart: boolean;
 }
 
 export interface ApexStatus {
@@ -103,6 +109,8 @@ interface AppState {
   releaseInfo: ReleaseInfo | null;
   updateCheckError: string | null;
   autostart: boolean;
+  autoConnectOnAutostart: boolean;
+  lastStrategyId: string | null;
   zapretInstalled: boolean;
   zapretInstalling: boolean;
   zapretMessage: string | null;
@@ -141,6 +149,8 @@ interface AppState {
   applyUpdate: (downloadUrl: string, tagName: string) => Promise<string>;
   loadAutostart: () => Promise<void>;
   setAutostart: (enabled: boolean) => Promise<void>;
+  loadAppPrefs: () => Promise<void>;
+  setAutoConnectOnAutostart: (enabled: boolean) => Promise<void>;
   clearError: () => void;
 }
 
@@ -157,6 +167,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   releaseInfo: null,
   updateCheckError: null,
   autostart: false,
+  autoConnectOnAutostart: true,
+  lastStrategyId: null,
   zapretInstalled: false,
   zapretInstalling: false,
   zapretMessage: null,
@@ -177,8 +189,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       s.loadZapretSettings(),
       s.loadApexStatus(),
       s.loadAutostart(),
+      s.loadAppPrefs(),
       s.loadLocalVersion(),
     ]);
+    const { appInfo, autoConnectOnAutostart } = get();
+    if (appInfo?.from_autostart && autoConnectOnAutostart) {
+      set({ isLoading: true, winwsSessionHint: "Автоподключение после автозапуска…" });
+      try {
+        const active = await invoke<ActiveStrategy | null>("try_autostart_connect");
+        if (active) {
+          set({ activeStrategy: active, zapretInstalled: true, error: null });
+        } else {
+          await get().loadActiveStrategy();
+        }
+      } catch (e) {
+        set({ error: String(e) });
+        await get().loadActiveStrategy();
+      } finally {
+        set({ isLoading: false, winwsSessionHint: null });
+      }
+    }
     set({ appReady: true });
   },
 
@@ -501,6 +531,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await invoke("set_autostart_enabled", { enabled });
       set({ autostart: enabled });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadAppPrefs: async () => {
+    try {
+      const prefs = await invoke<AppPrefs>("get_app_prefs");
+      set({
+        autoConnectOnAutostart: prefs.auto_connect_on_autostart,
+        lastStrategyId: prefs.last_strategy_id,
+      });
+    } catch {
+      set({ autoConnectOnAutostart: true, lastStrategyId: null });
+    }
+  },
+
+  setAutoConnectOnAutostart: async (enabled) => {
+    try {
+      await invoke("set_auto_connect_on_autostart", { enabled });
+      set({ autoConnectOnAutostart: enabled });
     } catch (e) {
       set({ error: String(e) });
     }

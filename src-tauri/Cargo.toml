@@ -1,6 +1,6 @@
 [package]
 name = "fastpatch"
-version = "0.1.0"
+version = "0.2.0"
 description = "fastpatch — GUI wrapper for zapret-discord-youtube"
 authors = ["fastpatch"]
 edition = "2021"
@@ -15,7 +15,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-ico", "image-png"] }
 tauri-plugin-opener = "2"
-tauri-plugin-autostart = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }

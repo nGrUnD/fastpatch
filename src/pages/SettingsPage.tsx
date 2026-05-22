@@ -10,6 +10,7 @@ import {
   Globe,
   List,
   Monitor,
+  Plug,
   Power,
   RefreshCw,
   Shield,
@@ -115,6 +116,8 @@ function SelectSetting({
 function SystemSettings() {
   const {
     autostart,
+    autoConnectOnAutostart,
+    setAutoConnectOnAutostart,
     zapretInstalled,
     zapretSettings,
     isLoading,
@@ -169,9 +172,19 @@ function SystemSettings() {
         <SettingRow
           icon={Power}
           title="Автозапуск"
-          description="Запускать fastpatch при входе в Windows"
+          description="При входе в Windows через планировщик (высокий приоритет, раньше Discord). Один UAC при включении — при загрузке ПК запроса не будет."
         >
           <Toggle enabled={autostart} onToggle={() => setAutostart(!autostart)} />
+        </SettingRow>
+        <SettingRow
+          icon={Plug}
+          title="Автоподключение"
+          description="После автозапуска подключать последнюю использованную стратегию"
+        >
+          <Toggle
+            enabled={autoConnectOnAutostart}
+            onToggle={() => setAutoConnectOnAutostart(!autoConnectOnAutostart)}
+          />
         </SettingRow>
         <SettingRow
           icon={Monitor}

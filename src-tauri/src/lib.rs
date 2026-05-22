@@ -1,5 +1,9 @@
+mod app_prefs;
 mod commands;
+mod launch;
 mod paths;
+#[cfg(windows)]
+mod win_autostart;
 #[cfg(windows)]
 mod win_process;
 
@@ -8,6 +12,7 @@ use commands::hosts::{
     write_hosts, HostsState,
 };
 use commands::apex::{get_apex_status, setup_apex_preset, test_apex_connectivity};
+use commands::autostart_connect::try_autostart_connect;
 use commands::strategy::{
     add_custom_strategy, auto_detect_apex_strategy, auto_detect_strategy, get_active_strategy,
     cancel_strategy_scan, get_strategies, get_zapret_status, scan_all_strategies, start_strategy,
@@ -29,23 +34,43 @@ use tauri::{
 };
 
 #[tauri::command]
-fn get_autostart_enabled(app: tauri::AppHandle) -> bool {
-    use tauri_plugin_autostart::ManagerExt;
-    app.autolaunch().is_enabled().unwrap_or(false)
+fn get_autostart_enabled() -> bool {
+    #[cfg(windows)]
+    {
+        return crate::win_autostart::is_enabled();
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 #[tauri::command]
-fn set_autostart_enabled(enabled: bool, app: tauri::AppHandle) -> Result<(), String> {
-    use tauri_plugin_autostart::ManagerExt;
-    if enabled {
-        app.autolaunch()
-            .enable()
-            .map_err(|e| format!("Не удалось включить автозапуск: {e}"))
-    } else {
-        app.autolaunch()
-            .disable()
-            .map_err(|e| format!("Не удалось отключить автозапуск: {e}"))
+fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        if enabled {
+            crate::win_autostart::enable(&exe)
+        } else {
+            crate::win_autostart::disable()
+        }
     }
+    #[cfg(not(windows))]
+    {
+        let _ = enabled;
+        Err("Автозапуск доступен только в Windows".into())
+    }
+}
+
+#[tauri::command]
+fn get_app_prefs() -> app_prefs::AppPrefs {
+    app_prefs::load()
+}
+
+#[tauri::command]
+fn set_auto_connect_on_autostart(enabled: bool) -> Result<(), String> {
+    app_prefs::set_auto_connect_on_autostart(enabled)
 }
 
 #[tauri::command]
@@ -61,6 +86,8 @@ struct AppInfo {
     elevated: bool,
     /// Debug-сборка ожидает Vite на localhost:1420 (только `pnpm tauri dev`).
     is_dev_build: bool,
+    /// Старт из задачи планировщика (`--from-autostart`).
+    from_autostart: bool,
 }
 
 #[tauri::command]
@@ -68,6 +95,7 @@ fn get_app_info() -> AppInfo {
     AppInfo {
         elevated: is_app_elevated(),
         is_dev_build: cfg!(debug_assertions),
+        from_autostart: launch::autostart_session(),
     }
 }
 
@@ -176,20 +204,30 @@ fn setup_tray<R: Runtime>(app: &tauri::App<R>, icon: Image<'static>) -> tauri::R
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--minimized"]),
-        ))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(ProcessState(Arc::new(Mutex::new(None))))
         .manage(ScanCancelState(Arc::new(AtomicBool::new(false))))
         .manage(HostsState)
         .setup(|app| {
-            // В dev не перезапускаем с UAC — иначе обрывается `pnpm tauri dev` и Vite на :1420
+            let from_autostart = launch::autostart_session();
+
+            #[cfg(windows)]
+            crate::win_autostart::remove_legacy_run_entries();
+
+            // Автозапуск: задача планировщика уже с правами админа — не показываем UAC повторно.
             #[cfg(all(windows, not(debug_assertions)))]
             {
-                crate::win_process::ensure_app_elevated()?;
+                if from_autostart {
+                    if !crate::win_process::is_elevated() {
+                        eprintln!(
+                            "[fastpatch] Автозапуск без прав администратора. \
+                             Отключите и снова включите автозапуск в настройках (один раз подтвердите UAC)."
+                        );
+                    }
+                } else {
+                    crate::win_process::ensure_app_elevated()?;
+                }
             }
             #[cfg(all(windows, debug_assertions))]
             if !crate::win_process::is_elevated() {
@@ -205,9 +243,7 @@ pub fn run() {
             }
             setup_tray(app, icon)?;
 
-            // Start minimized to tray if --minimized flag passed
-            let args: Vec<String> = std::env::args().collect();
-            if args.contains(&"--minimized".to_string()) {
+            if launch::minimized() || from_autostart {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
@@ -259,6 +295,9 @@ pub fn run() {
             // window / autostart
             get_autostart_enabled,
             set_autostart_enabled,
+            get_app_prefs,
+            set_auto_connect_on_autostart,
+            try_autostart_connect,
             show_window,
             hide_to_tray,
             is_app_elevated,

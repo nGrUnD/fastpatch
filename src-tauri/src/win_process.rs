@@ -6,7 +6,7 @@ use std::process::Command;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-fn ps_escape(s: &str) -> String {
+pub fn ps_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 

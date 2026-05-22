@@ -8,6 +8,11 @@ export function AdminBanner() {
 
   if (!appInfo) return null;
 
+  // Тихий автозапуск из планировщика (без повторного UAC).
+  if (appInfo.from_autostart && appInfo.elevated) {
+    return null;
+  }
+
   if (appInfo.elevated) {
     return (
       <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-300/90 shrink-0">

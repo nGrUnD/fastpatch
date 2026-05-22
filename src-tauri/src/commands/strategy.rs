@@ -51,6 +51,7 @@ pub struct ZapretStatus {
     pub zapret_dir: String,
 }
 
+#[derive(Clone)]
 pub struct ProcessState(pub Arc<Mutex<Option<(String, String, u32)>>>);
 
 const AUTO_DETECT_WARMUP_MS: u64 = 1500;
@@ -147,8 +148,7 @@ pub fn get_strategies() -> Result<Vec<Strategy>, String> {
     strategy_loader::load_strategies()
 }
 
-#[tauri::command]
-pub fn get_active_strategy(state: State<ProcessState>) -> Option<ActiveStrategy> {
+pub fn get_active_strategy_inner(state: &ProcessState) -> Option<ActiveStrategy> {
     let mut guard = state.0.lock().unwrap();
     let Some((id, name, _)) = guard.as_ref() else {
         return None;
@@ -166,20 +166,30 @@ pub fn get_active_strategy(state: State<ProcessState>) -> Option<ActiveStrategy>
 }
 
 #[tauri::command]
-pub fn start_strategy(id: String, state: State<ProcessState>) -> Result<(), String> {
+pub fn get_active_strategy(state: State<ProcessState>) -> Option<ActiveStrategy> {
+    get_active_strategy_inner(&state)
+}
+
+pub fn start_strategy_inner(id: &str, state: &ProcessState) -> Result<(), String> {
     let strategies = get_strategies()?;
     let strategy = strategies
         .iter()
         .find(|s| s.id == id)
         .ok_or_else(|| format!("Стратегия '{id}' не найдена"))?;
 
-    stop_child(&state);
+    stop_child(state);
 
     let pid = spawn_strategy(strategy)?;
     let name = strategy.name.clone();
+    crate::app_prefs::set_last_strategy_id(id);
     let mut guard = state.0.lock().unwrap();
-    *guard = Some((id, name, pid));
+    *guard = Some((id.to_string(), name, pid));
     Ok(())
+}
+
+#[tauri::command]
+pub fn start_strategy(id: String, state: State<ProcessState>) -> Result<(), String> {
+    start_strategy_inner(&id, &state)
 }
 
 #[tauri::command]
