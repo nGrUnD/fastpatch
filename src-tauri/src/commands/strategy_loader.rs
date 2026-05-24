@@ -42,8 +42,10 @@ fn scan_bat_strategies(root: &Path) -> Result<Vec<Strategy>, String> {
         let id = bat_to_id(&name);
 
         let tags = infer_tags(&name, &content);
-        let description = if tags.iter().any(|t| t == "apex") {
-            "Пресет для Apex Legends (issue #6503): list-apex.txt, порты UDP 10000–10100, ipset-exclude".to_string()
+        let description = if name.to_uppercase().contains("ALT11") && name.to_uppercase().contains("APEX") {
+            "ALT11 + Apex: YouTube/Discord как ALT11; игровой UDP без ipset-all, 155.133/16, лобби после матча".to_string()
+        } else if tags.iter().any(|t| t == "apex") {
+            "Apex Legends (ALT11 APEX): list-apex, ipset-exclude EA, игровой UDP без ipset-all".to_string()
         } else {
             format!("Запуск: {}", name)
         };
@@ -94,8 +96,8 @@ fn bat_sort_key(filename: &str) -> (u8, u32, String) {
     if stem == "general" {
         return (0, 0, String::new());
     }
-    if stem.eq_ignore_ascii_case("general (APEX)") {
-        return (0, 1, "APEX".into());
+    if stem.to_uppercase().contains("ALT11") && stem.to_uppercase().contains("APEX") {
+        return (0, 1, "ALT11 APEX".into());
     }
     if let Some(rest) = stem.strip_prefix("general (") {
         if let Some(inner) = rest.strip_suffix(')') {
@@ -187,7 +189,11 @@ fn infer_tags(filename: &str, content: &str) -> Vec<String> {
     let lower = format!("{filename} {content}").to_lowercase();
     let mut tags = Vec::new();
 
-    if filename.to_uppercase().contains("APEX") || lower.contains("list-apex.txt") {
+    if filename.to_uppercase().contains("APEX")
+        || lower.contains("list-apex.txt")
+        || lower.contains("list-apex-extra.txt")
+        || lower.contains("ipset-exclude-apex-ea")
+    {
         tags.push("apex".to_string());
     }
     if lower.contains("discord") {
@@ -286,6 +292,13 @@ fn expand_bat_variables(raw: &str, root: &Path) -> Result<String, String> {
     s = s.replace("%GameFilterTCP%", &gftcp);
     s = s.replace("%GameFilterUDP%", &gfudp);
     s = s.replace("%GameFilter%", &gf);
+    if s.contains("%EXC%") {
+        let exc = format!(
+            "--ipset-exclude=\"{}ipset-exclude.txt\" --ipset-exclude=\"{}ipset-exclude-user.txt\" --ipset-exclude=\"{}ipset-exclude-apex-ea.txt\"",
+            lists, lists, lists
+        );
+        s = s.replace("%EXC%", &exc);
+    }
     Ok(s)
 }
 

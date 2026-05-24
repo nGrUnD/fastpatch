@@ -304,7 +304,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         set({
           zapretMessage:
-            "Среди Apex-стратегий рабочая не найдена. Попробуйте general (APEX) или ALT11 вручную.",
+            "ALT11 APEX не прошла проверку. Установите пресет Apex и подключите вручную.",
         });
       }
       return id;

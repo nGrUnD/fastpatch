@@ -1,0 +1,17 @@
+# Respawn / матчмейкинг / возврат в лобби (issues #6503 #9730 #9822 #9529)
+gateway.ea.com
+friends.gs.ea.com
+experimentation-apex.data.ea.com
+r5-crossplay.r5prod.stryder.respawn.com
+r5-pc-stats.stryder.respawn.com
+r5-assets.stryder.respawn.com
+r5-prod-direct.r5prod.stryder.respawn.com
+fastpatch-rules.r5prod.stryder.respawn.com
+rtm.titanfall.com
+accounts.aws-gslb.prod.ea.com
+signin.aws-gslb.prod.ea.com
+gosredirector.ea.com
+gslb.prod.ea.com
+javelin.ac.ea.com
+accounts.launcher-secure.ea.com
+api.k.social.ea.com

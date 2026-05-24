@@ -5,8 +5,11 @@ use crate::paths::{find_data_file, zapret_dir};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-const APEX_BAT: &str = "general (APEX).bat";
+const LEGACY_APEX_BAT: &str = "general (APEX).bat";
+const APEX_BAT: &str = "general (ALT11 APEX).bat";
 const APEX_LIST: &str = "list-apex.txt";
+const APEX_LIST_EXTRA: &str = "list-apex-extra.txt";
+const IPSET_EXCLUDE_APEX_EA: &str = "ipset-exclude-apex-ea.txt";
 
 /// HTTP endpoints to probe EA / Apex connectivity (not in-game UDP).
 pub const APEX_PROBE_TARGETS: &[(&str, &str)] = &[
@@ -21,15 +24,25 @@ fn extra_resource_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("resources").join("zapret-extra")
 }
 
-fn bundled_list_path() -> PathBuf {
-    extra_resource_root().join("lists").join(APEX_LIST)
+fn copy_bundled(relative: &str, dest: &Path) -> Result<(), String> {
+    let src = find_data_file(&format!("resources/zapret-extra/{relative}"))
+        .or_else(|| {
+            let p = extra_resource_root().join(relative);
+            if p.is_file() {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| format!("Встроенный файл не найден: {relative}"))?;
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::copy(&src, dest).map_err(|e| format!("Не удалось скопировать {relative}: {e}"))?;
+    Ok(())
 }
 
-fn bundled_bat_path() -> PathBuf {
-    extra_resource_root().join(APEX_BAT)
-}
-
-/// Copy fastpatch Apex preset into installed zapret folder.
+/// Copy fastpatch Apex presets into installed zapret folder.
 pub fn ensure_apex_assets() -> Result<(), String> {
     let root = zapret_dir();
     if !root.join("bin").join("winws.exe").is_file() {
@@ -39,35 +52,21 @@ pub fn ensure_apex_assets() -> Result<(), String> {
     let lists = root.join("lists");
     std::fs::create_dir_all(&lists).map_err(|e| e.to_string())?;
 
-    let list_src = find_data_file(&format!("resources/zapret-extra/lists/{APEX_LIST}"))
-        .or_else(|| {
-            let p = bundled_list_path();
-            if p.is_file() {
-                Some(p)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| format!("Встроенный {APEX_LIST} не найден"))?;
+    copy_bundled(&format!("lists/{APEX_LIST}"), &lists.join(APEX_LIST))?;
+    copy_bundled(
+        &format!("lists/{APEX_LIST_EXTRA}"),
+        &lists.join(APEX_LIST_EXTRA),
+    )?;
+    copy_bundled(
+        &format!("lists/{IPSET_EXCLUDE_APEX_EA}"),
+        &lists.join(IPSET_EXCLUDE_APEX_EA),
+    )?;
+    copy_bundled(APEX_BAT, &root.join(APEX_BAT))?;
 
-    let list_dst = lists.join(APEX_LIST);
-    std::fs::copy(&list_src, &list_dst)
-        .map_err(|e| format!("Не удалось скопировать {APEX_LIST}: {e}"))?;
-
-    let bat_src = find_data_file(&format!("resources/zapret-extra/{APEX_BAT}"))
-        .or_else(|| {
-            let p = bundled_bat_path();
-            if p.is_file() {
-                Some(p)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| format!("Встроенный {APEX_BAT} не найден"))?;
-
-    let bat_dst = root.join(APEX_BAT);
-    std::fs::copy(&bat_src, &bat_dst)
-        .map_err(|e| format!("Не удалось скопировать {APEX_BAT}: {e}"))?;
+    let legacy = root.join(LEGACY_APEX_BAT);
+    if legacy.is_file() {
+        let _ = std::fs::remove_file(&legacy);
+    }
 
     Ok(())
 }
@@ -92,29 +91,24 @@ pub struct ApexStatus {
 pub fn apex_tips() -> Vec<ApexTip> {
     vec![
         ApexTip {
+            title: "Стратегия ALT11 APEX".into(),
+            body: "Единственный пресет Apex: ALT11 + list-apex, ipset-exclude EA/Respawn (155.133/16), игровой UDP без ipset-all. Установите пресет и подключите из панели Apex.".into(),
+            issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/6503".into()),
+        },
+        ApexTip {
             title: "Игровой фильтр".into(),
-            body: "Если Apex не заходит в лобби при обходе — выключите Game Filter в настройках и перезапустите стратегию (README zapret, issues #6198, #8724).".into(),
+            body: "Для Apex держите Game Filter выключенным — иначе лобби и возврат после матча часто ломаются (#6198, #8724).".into(),
             issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/6198".into()),
         },
         ApexTip {
-            title: "IPSet".into(),
-            body: "Если лобби всё ещё ломается — попробуйте режим IPSet «Отключён» (empty). Для пресета APEX нужен загруженный ipset-all — обновите список IP в настройках.".into(),
-            issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/6503".into()),
-        },
-        ApexTip {
-            title: "Порты UDP 10000–10100".into(),
-            body: "В пресете APEX добавлены игровые порты матчмейкинга; без них возможны code:leaf и зависание на загрузке матча.".into(),
-            issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/6503".into()),
-        },
-        ApexTip {
-            title: "Стратегия APEX".into(),
-            body: "Отдельный .bat с list-apex.txt + ipset-exclude (решение из #6503). Discord/YouTube частично сохраняются.".into(),
-            issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/6503".into()),
-        },
-        ApexTip {
-            title: "code:leaf / пинг".into(),
-            body: "Часто помогает ALT11 вместо FAKE TLS; иногда нужны свои IP в ipset-all. Проверка в fastpatch — только HTTP до EA, не замена игрового теста.".into(),
+            title: "code:leaf / матч".into(),
+            body: "Порты матчмейкинга и list-apex уже в пресете. При code:leaf обновите пресет Apex и переподключите стратегию.".into(),
             issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/9730".into()),
+        },
+        ApexTip {
+            title: "После матча".into(),
+            body: "Если не возвращает в лобби — «Установить пресет» и снова ALT11 APEX. Игровой фильтр — выкл.".into(),
+            issue_url: Some("https://github.com/Flowseal/zapret-discord-youtube/issues/9529".into()),
         },
     ]
 }
@@ -159,7 +153,7 @@ pub fn setup_apex_preset() -> Result<String, String> {
     }
 
     Ok(
-        "Пресет Apex установлен: list-apex.txt и general (APEX).bat. Игровой фильтр выключен — запустите стратегию APEX и проверьте игру.".into(),
+        "Пресет Apex: ALT11 APEX (list-apex, ipset-exclude EA). Игровой фильтр выключен. Подключите стратегию из панели или списка.".into(),
     )
 }
 

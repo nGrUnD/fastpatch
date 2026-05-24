@@ -32,7 +32,7 @@ export function ApexPanel() {
   const [localMsg, setLocalMsg] = useState<string | null>(null);
 
   const apexStrategy = strategies.find(
-    (s) => s.id === "apex" || s.name.toUpperCase() === "APEX"
+    (s) => s.id === "alt11-apex" || s.name.toUpperCase() === "ALT11 APEX",
   );
 
   const handleSetup = async () => {
@@ -83,8 +83,8 @@ export function ApexPanel() {
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-white">Apex Legends</h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Пресет из Issues zapret (#6503): отдельный list-apex.txt, порты матчмейкинга,
-            ipset-exclude. HTTP-проверка EA — не замена входа в лобби.
+            Стратегия ALT11 APEX: YouTube/Discord как ALT11, list-apex и исключения EA/Respawn.
+            HTTP-проверка EA — не замена входа в лобби.
           </p>
         </div>
       </div>
@@ -114,7 +114,7 @@ export function ApexPanel() {
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600/80 text-xs text-white hover:bg-orange-600 disabled:opacity-40"
         >
           <Play className="w-3.5 h-3.5" />
-          Запустить APEX
+          Подключить ALT11 APEX
         </button>
         <button
           onClick={handleTest}
@@ -137,10 +137,10 @@ export function ApexPanel() {
         </button>
       </div>
 
-      {activeStrategy?.name.toUpperCase() === "APEX" && (
+      {activeStrategy?.name.toUpperCase() === "ALT11 APEX" && (
         <p className="text-xs text-emerald-300 flex items-center gap-1">
           <CheckCircle className="w-3.5 h-3.5" />
-          Активна стратегия APEX
+          Активна стратегия ALT11 APEX
         </p>
       )}
 
