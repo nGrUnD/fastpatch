@@ -41,7 +41,7 @@ export function AdminBanner() {
           </p>
           <p className="text-xs text-amber-200/70 mt-1">
             WinDivert и zapret (winws.exe) работают только с повышенными правами.
-            Подтвердите один запрос UAC — дальше стратегии запускаются без лишних окон.
+            Подтвердите UAC — без этого winws и стратегии не запустятся.
           </p>
           {appInfo.is_dev_build && (
             <p className="text-xs text-amber-200/60 mt-2">

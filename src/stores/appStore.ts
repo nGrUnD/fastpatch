@@ -298,7 +298,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const id = await invoke<string | null>("auto_detect_apex_strategy");
-      if (!id) {
+      if (id) {
+        await get().loadActiveStrategy();
+        set({ lastStrategyId: id });
+      } else {
         set({
           zapretMessage:
             "Среди Apex-стратегий рабочая не найдена. Попробуйте general (APEX) или ALT11 вручную.",
@@ -336,7 +339,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await invoke("start_strategy", { id });
       await get().loadActiveStrategy();
-      set({ zapretInstalled: true });
+      set({ zapretInstalled: true, lastStrategyId: id });
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -446,7 +449,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const id = await invoke<string | null>("auto_detect_strategy");
       if (id) {
         await get().loadActiveStrategy();
-        set({ winwsSessionHint: null });
+        set({ lastStrategyId: id, winwsSessionHint: null });
       } else {
         set({
           error:

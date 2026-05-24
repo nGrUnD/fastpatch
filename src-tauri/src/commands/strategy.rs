@@ -331,6 +331,7 @@ pub async fn auto_detect_strategy(state: State<'_, ProcessState>) -> Result<Opti
         );
 
         if score.passes_autodetect() {
+            crate::app_prefs::set_last_strategy_id(&strategy.id);
             return Ok(Some(strategy.id.clone()));
         }
 
@@ -565,6 +566,7 @@ pub async fn auto_detect_apex_strategy(state: State<'_, ProcessState>) -> Result
         .await;
         let score = score_probe_hits_with_timeout(&hits, AUTODETECT_TIMEOUT_MS);
         if score.passes_autodetect() {
+            crate::app_prefs::set_last_strategy_id(&strategy.id);
             return Ok(Some(strategy.id.clone()));
         }
 

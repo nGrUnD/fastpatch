@@ -2,6 +2,7 @@ mod app_prefs;
 mod commands;
 mod launch;
 mod paths;
+mod startup_log;
 #[cfg(windows)]
 mod win_autostart;
 #[cfg(windows)]
@@ -136,17 +137,15 @@ fn hide_to_tray(app: tauri::AppHandle) {
     }
 }
 
-/// Иконка из `src-tauri/icons/` (в dev `default_window_icon()` часто остаётся дефолтной Tauri).
-fn load_app_icon() -> tauri::Result<Image<'static>> {
-    let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons");
-    #[cfg(windows)]
-    let path = icons.join("icon.ico");
-    #[cfg(not(windows))]
-    let path = icons.join("32x32.png");
-    if path.is_file() {
-        return Image::from_path(&path);
+/// Иконка трея: ресурсы рядом с exe (MSI), не путь машины разработчика.
+fn load_app_icon<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<Image<'static>> {
+    for path in paths::icon_search_paths(app) {
+        if path.is_file() {
+            return Image::from_path(&path);
+        }
     }
-    Image::from_path(icons.join("32x32.png"))
+    // Вшито в бинарник — запасной вариант, если resource_dir на ПК пользователя пуст.
+    Ok(tauri::include_image!("icons/32x32.png"))
 }
 
 fn setup_tray<R: Runtime>(app: &tauri::App<R>, icon: Image<'static>) -> tauri::Result<()> {
@@ -215,19 +214,13 @@ pub fn run() {
             #[cfg(windows)]
             crate::win_autostart::remove_legacy_run_entries();
 
-            // Автозапуск: задача планировщика уже с правами админа — не показываем UAC повторно.
+            // Не вызываем UAC в setup: при отмене/ошибке процесс сразу завершался (выглядело как вылет).
+            // Права админа — через баннер в UI или автозапуск из планировщика.
             #[cfg(all(windows, not(debug_assertions)))]
-            {
-                if from_autostart {
-                    if !crate::win_process::is_elevated() {
-                        eprintln!(
-                            "[fastpatch] Автозапуск без прав администратора. \
-                             Отключите и снова включите автозапуск в настройках (один раз подтвердите UAC)."
-                        );
-                    }
-                } else {
-                    crate::win_process::ensure_app_elevated()?;
-                }
+            if from_autostart && !crate::win_process::is_elevated() {
+                startup_log::log(
+                    "Автозапуск без прав администратора — пересоздайте задачу в настройках.",
+                );
             }
             #[cfg(all(windows, debug_assertions))]
             if !crate::win_process::is_elevated() {
@@ -237,11 +230,17 @@ pub fn run() {
                 );
             }
 
-            let icon = load_app_icon()?;
+            let icon = load_app_icon(app).map_err(|e| {
+                startup_log::log(&format!("load_app_icon: {e}"));
+                e
+            })?;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_icon(icon.clone());
             }
-            setup_tray(app, icon)?;
+            setup_tray(app, icon).map_err(|e| {
+                startup_log::log(&format!("setup_tray: {e}"));
+                e
+            })?;
 
             if launch::minimized() || from_autostart {
                 if let Some(window) = app.get_webview_window("main") {

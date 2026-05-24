@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use tauri::{Manager, Runtime};
 
 fn push_dir_candidates(candidates: &mut Vec<PathBuf>, dir: PathBuf) {
     candidates.push(dir.join("zapret"));
@@ -19,10 +20,6 @@ fn push_dir_candidates(candidates: &mut Vec<PathBuf>, dir: PathBuf) {
 pub fn find_zapret_dir() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    push_dir_candidates(&mut candidates, manifest.join(".."));
-    push_dir_candidates(&mut candidates, manifest.clone());
-
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
             push_dir_candidates(&mut candidates, parent.to_path_buf());
@@ -32,6 +29,10 @@ pub fn find_zapret_dir() -> Option<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         push_dir_candidates(&mut candidates, cwd);
     }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    push_dir_candidates(&mut candidates, manifest.join(".."));
+    push_dir_candidates(&mut candidates, manifest.clone());
 
     for dir in candidates {
         let winws = dir.join("bin").join("winws.exe");
@@ -56,13 +57,29 @@ pub fn winws_path() -> PathBuf {
     zapret_dir().join("bin").join("winws.exe")
 }
 
+/// Пути поиска icon.ico / icon.png (MSI, resource_dir, dev).
+pub fn icon_search_paths<R: Runtime>(app: &tauri::App<R>) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(res) = app.path().resource_dir() {
+        paths.push(res.join("icon.ico"));
+        paths.push(res.join("icons").join("icon.ico"));
+        paths.push(res.join("32x32.png"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            paths.push(dir.join("icon.ico"));
+            paths.push(dir.join("resources").join("icon.ico"));
+        }
+    }
+    let dev_icons = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("icons");
+    paths.push(dev_icons.join("icon.ico"));
+    paths.push(dev_icons.join("32x32.png"));
+    paths
+}
+
 /// Locate a data file (e.g. `strategies.json`) for dev and bundled runs.
 pub fn find_data_file(filename: &str) -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
-
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    candidates.push(manifest.join("..").join(filename));
-    candidates.push(manifest.join(filename));
 
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.parent().map(|p| p.to_path_buf());
@@ -76,6 +93,10 @@ pub fn find_data_file(filename: &str) -> Option<PathBuf> {
             }
         }
     }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest.join("..").join(filename));
+    candidates.push(manifest.join(filename));
 
     if let Ok(cwd) = std::env::current_dir() {
         let mut dir: Option<PathBuf> = Some(cwd);

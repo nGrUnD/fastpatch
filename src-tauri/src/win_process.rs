@@ -60,7 +60,7 @@ pub fn ensure_app_elevated() -> Result<(), String> {
 pub fn spawn_winws(exe: &Path, args: &[String], cwd: &Path) -> Result<u32, String> {
     if !is_elevated() {
         return Err(
-            "Нет прав администратора. Перезапустите fastpatch — при старте подтвердите один запрос UAC."
+            "Нет прав администратора. В fastpatch нажмите «Запустить от имени администратора»."
                 .to_string(),
         );
     }
