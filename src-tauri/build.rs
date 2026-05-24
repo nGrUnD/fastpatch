@@ -4,6 +4,10 @@ fn main() {
     if strategies.exists() {
         println!("cargo:rerun-if-changed={}", strategies.display());
     }
+    let zapret_extra = manifest_dir.join("../resources/zapret-extra");
+    if zapret_extra.exists() {
+        println!("cargo:rerun-if-changed={}", zapret_extra.display());
+    }
     let icons_dir = manifest_dir.join("icons");
     for name in [
         "icon.ico",

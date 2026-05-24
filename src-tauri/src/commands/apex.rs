@@ -1,9 +1,9 @@
 //! Apex Legends helpers (based on zapret-discord-youtube issues #6503, #6198, #9730).
 
 use super::probe::http_probe;
-use crate::paths::{find_data_file, zapret_dir};
+use crate::paths::{find_zapret_extra_file, zapret_dir};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const LEGACY_APEX_BAT: &str = "general (APEX).bat";
 const APEX_BAT: &str = "general (ALT11 APEX).bat";
@@ -20,26 +20,47 @@ pub const APEX_PROBE_TARGETS: &[(&str, &str)] = &[
     ("ea_cdn", "https://eaassets-a.akamaihd.net"),
 ];
 
-fn extra_resource_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("resources").join("zapret-extra")
+fn embedded_content(relative: &str) -> Option<&'static str> {
+    match relative.replace('\\', "/").as_str() {
+        "lists/list-apex.txt" => Some(include_str!(
+            "../../../resources/zapret-extra/lists/list-apex.txt"
+        )),
+        "lists/list-apex-extra.txt" => Some(include_str!(
+            "../../../resources/zapret-extra/lists/list-apex-extra.txt"
+        )),
+        "lists/ipset-exclude-apex-ea.txt" => Some(include_str!(
+            "../../../resources/zapret-extra/lists/ipset-exclude-apex-ea.txt"
+        )),
+        "general (ALT11 APEX).bat" => Some(include_str!(
+            "../../../resources/zapret-extra/general (ALT11 APEX).bat"
+        )),
+        _ => None,
+    }
 }
 
 fn copy_bundled(relative: &str, dest: &Path) -> Result<(), String> {
-    let src = find_data_file(&format!("resources/zapret-extra/{relative}"))
-        .or_else(|| {
-            let p = extra_resource_root().join(relative);
-            if p.is_file() {
-                Some(p)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| format!("Встроенный файл не найден: {relative}"))?;
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::copy(&src, dest).map_err(|e| format!("Не удалось скопировать {relative}: {e}"))?;
-    Ok(())
+
+    if let Some(src) = find_zapret_extra_file(relative) {
+        std::fs::copy(&src, dest)
+            .map_err(|e| format!("Не удалось скопировать {relative} из {}: {e}", src.display()))?;
+        return Ok(());
+    }
+
+    if let Some(content) = embedded_content(relative) {
+        std::fs::write(dest, content)
+            .map_err(|e| format!("Не удалось записать {relative}: {e}"))?;
+        return Ok(());
+    }
+
+    let hint = std::env::current_exe()
+        .map(|p| format!(" (exe: {})", p.display()))
+        .unwrap_or_default();
+    Err(format!(
+        "Встроенный файл не найден: {relative}{hint}. Переустановите fastpatch."
+    ))
 }
 
 /// Copy fastpatch Apex presets into installed zapret folder.

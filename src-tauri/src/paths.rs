@@ -113,6 +113,45 @@ pub fn find_data_file(filename: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
+/// Файлы пресета Apex из bundle MSI/NSIS или из репозитория (dev).
+pub fn find_zapret_extra_file(relative: &str) -> Option<PathBuf> {
+    let rel = relative.replace('\\', "/");
+    let file_name = PathBuf::from(&rel)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&rel)
+        .to_string();
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    let rel_suffixes = [
+        rel.clone(),
+        format!("zapret-extra/{rel}"),
+        format!("resources/zapret-extra/{rel}"),
+        format!("_up_/resources/zapret-extra/{rel}"),
+        file_name,
+    ];
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for rp in rel_suffixes {
+                candidates.push(dir.join(rp));
+            }
+        }
+    }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(
+        manifest
+            .join("..")
+            .join("resources")
+            .join("zapret-extra")
+            .join(&rel),
+    );
+
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 pub fn data_file_or_err(filename: &str) -> Result<PathBuf, String> {
     find_data_file(filename).ok_or_else(|| {
         let hint = std::env::current_exe()
