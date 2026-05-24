@@ -12,6 +12,16 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub const WINWS_WARMUP_MS: u64 = 4000;
 pub const WINWS_FAST_WARMUP_MS: u64 = 800;
 
+/// Префикс для UI: жёлтое предупреждение + кнопка «Снять задачу».
+pub const WINWS_BUSY_PREFIX: &str = "WINWS_BUSY:";
+
+pub fn winws_busy_message(detail: &str) -> String {
+    format!(
+        "{WINWS_BUSY_PREFIX}winws.exe уже запущен ({detail}). \
+         Нажмите «Снять задачу» ниже и снова подключите нужную стратегию."
+    )
+}
+
 #[derive(Clone, Copy)]
 pub struct SpawnOptions {
     pub run_preamble: bool,
@@ -172,6 +182,12 @@ pub fn spawn_strategy_bat_with_options(source_bat: &str, opts: SpawnOptions) -> 
             );
         }
 
+        if let Some(pid) = find_winws_pid() {
+            return Err(winws_busy_message(&format!(
+                "не удалось остановить процесс {pid} — возможно, zapret запущен вне fastpatch"
+            )));
+        }
+
         if opts.run_preamble {
             run_zapret_preamble(&root, false);
         }
@@ -182,15 +198,20 @@ pub fn spawn_strategy_bat_with_options(source_bat: &str, opts: SpawnOptions) -> 
         }
 
         let bin_dir = root.join("bin");
-        let pid = spawn_winws(&winws_exe, &argv, &bin_dir)?;
+        let spawn_err = spawn_winws(&winws_exe, &argv, &bin_dir).err();
+        if let Some(e) = spawn_err {
+            if find_winws_pid().is_some() {
+                return Err(winws_busy_message(&e));
+            }
+            return Err(e);
+        }
 
         thread::sleep(Duration::from_millis(opts.warmup_ms));
 
-        find_winws_pid().ok_or_else(|| {
-            format!(
-                "winws.exe не запустился после {source_bat} (возможно, уже занят другим процессом). \
-                 Подождите пару секунд или перезапустите fastpatch."
-            )
+        let pid = find_winws_pid().ok_or_else(|| {
+            winws_busy_message(&format!(
+                "после {source_bat} процесс не появился — WinDivert может быть занят"
+            ))
         })?;
 
         Ok(pid)

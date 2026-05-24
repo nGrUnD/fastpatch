@@ -1,6 +1,6 @@
 [package]
 name = "fastpatch"
-version = "0.2.3"
+version = "0.2.4"
 description = "fastpatch — GUI wrapper for zapret-discord-youtube"
 authors = ["fastpatch"]
 edition = "2021"

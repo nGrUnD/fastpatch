@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
+import { splitInvokeError } from "@/lib/appErrors";
 
 export interface Strategy {
   id: string;
@@ -103,6 +104,7 @@ interface AppState {
   strategyScan: Record<string, StrategyScanEntry>;
   isScanning: boolean;
   winwsSessionHint: string | null;
+  winwsBusyHint: string | null;
   activeStrategy: ActiveStrategy | null;
   isLoading: boolean;
   error: string | null;
@@ -138,6 +140,7 @@ interface AppState {
   loadActiveStrategy: () => Promise<void>;
   startStrategy: (id: string) => Promise<void>;
   stopStrategy: () => Promise<void>;
+  killWinws: () => Promise<void>;
   testStrategy: (id: string) => Promise<TestResult[]>;
   scanAllStrategies: () => Promise<ScanAllResult>;
   cancelStrategyScan: () => void;
@@ -152,6 +155,7 @@ interface AppState {
   loadAppPrefs: () => Promise<void>;
   setAutoConnectOnAutostart: (enabled: boolean) => Promise<void>;
   clearError: () => void;
+  clearWinwsBusyHint: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -161,6 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   strategyScan: {},
   isScanning: false,
   winwsSessionHint: null,
+  winwsBusyHint: null,
   activeStrategy: null,
   isLoading: false,
   error: null,
@@ -335,13 +340,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startStrategy: async (id) => {
-    set({ isLoading: true, error: null, winwsSessionHint: null });
+    set({ isLoading: true, error: null, winwsSessionHint: null, winwsBusyHint: null });
     try {
       await invoke("start_strategy", { id });
       await get().loadActiveStrategy();
-      set({ zapretInstalled: true, lastStrategyId: id });
+      set({ zapretInstalled: true, lastStrategyId: id, winwsBusyHint: null });
     } catch (e) {
-      set({ error: String(e) });
+      set(splitInvokeError(e));
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  killWinws: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      await invoke("kill_winws");
+      await get().loadActiveStrategy();
+      set({
+        winwsBusyHint:
+          "Задача winws снята. Снова нажмите «Подключить» для нужной стратегии.",
+        activeStrategy: null,
+      });
+    } catch (e) {
+      set(splitInvokeError(e));
     } finally {
       set({ isLoading: false });
     }
@@ -363,7 +385,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       return await invoke<TestResult[]>("test_strategy", { id });
     } catch (e) {
-      set({ error: String(e) });
+      set(splitInvokeError(e));
       throw e;
     }
   },
@@ -398,7 +420,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().loadActiveStrategy();
       return result;
     } catch (e) {
-      set({ error: String(e), winwsSessionHint: null });
+      set({ ...splitInvokeError(e), winwsSessionHint: null });
       throw e;
     } finally {
       set({ isScanning: false });
@@ -464,7 +486,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return id;
     } catch (e) {
-      set({ error: String(e), winwsSessionHint: null });
+      set({ ...splitInvokeError(e), winwsSessionHint: null });
       return null;
     } finally {
       set({ isLoading: false });
@@ -625,4 +647,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+  clearWinwsBusyHint: () => set({ winwsBusyHint: null }),
 }));

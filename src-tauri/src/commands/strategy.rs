@@ -7,7 +7,7 @@ use super::probe::{
 use super::strategy_loader;
 use super::strategy_runner::{
     find_winws_pid, run_zapret_preamble, spawn_strategy_bat_with_options, stop_all_winws_and_wait,
-    SpawnOptions, WINWS_FAST_WARMUP_MS,
+    SpawnOptions, WINWS_BUSY_PREFIX, WINWS_FAST_WARMUP_MS,
 };
 use crate::paths::zapret_dir;
 use super::Strategy;
@@ -195,6 +195,20 @@ pub fn start_strategy(id: String, state: State<ProcessState>) -> Result<(), Stri
 #[tauri::command]
 pub fn stop_strategy(state: State<ProcessState>) -> Result<(), String> {
     stop_child(&state);
+    Ok(())
+}
+
+/// Принудительно завершить все winws.exe (если мешают подключению стратегии).
+#[tauri::command]
+pub fn kill_winws(state: State<ProcessState>) -> Result<(), String> {
+    stop_child(&state);
+    stop_all_winws_and_wait(8000);
+    if let Some(pid) = find_winws_pid() {
+        return Err(format!(
+            "{WINWS_BUSY_PREFIX}winws.exe всё ещё работает (PID {pid}). \
+             Закройте zapret вручную или перезапустите fastpatch от имени администратора."
+        ));
+    }
     Ok(())
 }
 

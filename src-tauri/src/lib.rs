@@ -16,8 +16,9 @@ use commands::apex::{get_apex_status, setup_apex_preset, test_apex_connectivity}
 use commands::autostart_connect::try_autostart_connect;
 use commands::strategy::{
     add_custom_strategy, auto_detect_apex_strategy, auto_detect_strategy, get_active_strategy,
-    cancel_strategy_scan, get_strategies, get_zapret_status, scan_all_strategies, start_strategy,
-    stop_strategy, test_media_connectivity, test_strategy, ProcessState, ScanCancelState,
+    cancel_strategy_scan, get_strategies, get_zapret_status, kill_winws, scan_all_strategies,
+    start_strategy, stop_strategy, test_media_connectivity, test_strategy, ProcessState,
+    ScanCancelState,
 };
 use commands::updater::{apply_update, check_for_updates, get_current_version, install_zapret};
 use commands::zapret_config::{
@@ -263,6 +264,7 @@ pub fn run() {
             get_active_strategy,
             start_strategy,
             stop_strategy,
+            kill_winws,
             test_strategy,
             test_media_connectivity,
             auto_detect_strategy,

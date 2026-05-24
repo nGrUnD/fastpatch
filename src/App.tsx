@@ -3,6 +3,7 @@ import { AdminBanner } from "@/components/AdminBanner";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { Sidebar } from "@/components/Sidebar";
+import { WinwsBusyBanner } from "@/components/WinwsBusyBanner";
 import { WinwsSessionBanner } from "@/components/WinwsSessionBanner";
 import { ZapretBanner } from "@/components/ZapretBanner";
 import { HomePage } from "@/pages/HomePage";
@@ -25,6 +26,7 @@ export default function App() {
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
         <ErrorBanner />
+        <WinwsBusyBanner />
         <WinwsSessionBanner />
         <AdminBanner />
         <ZapretBanner />
