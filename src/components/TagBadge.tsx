@@ -7,6 +7,13 @@ const TAG_COLORS: Record<string, string> = {
   games: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   apex: "bg-orange-500/20 text-orange-300 border-orange-500/30",
   general: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
+  zapret2: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  preset: "bg-teal-500/20 text-teal-300 border-teal-500/30",
+  recommended: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  aggressive: "bg-rose-500/20 text-rose-300 border-rose-500/30",
+  legacy: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
+  provider: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+  experimental: "bg-amber-500/20 text-amber-300 border-amber-500/30",
 };
 
 const TAG_LABELS: Record<string, string> = {
@@ -16,7 +23,44 @@ const TAG_LABELS: Record<string, string> = {
   games: "Игры",
   apex: "Apex Legends",
   general: "Общий",
+  zapret2: "Zapret 2",
+  preset: "Пресет",
+  recommended: "Рекомендуется",
+  aggressive: "Агрессивный",
+  legacy: "Legacy",
+  provider: "Провайдер",
+  experimental: "Эксперимент",
 };
+
+export const TECHNICAL_TAGS = new Set(["zapret2", "preset", "general"]);
+
+export const TAG_ORDER = [
+  "recommended",
+  "apex",
+  "games",
+  "discord",
+  "youtube",
+  "cloudflare",
+  "provider",
+  "aggressive",
+  "experimental",
+  "legacy",
+  "general",
+  "zapret2",
+  "preset",
+];
+
+export function sortTags(tags: string[]): string[] {
+  return [...tags].sort((a, b) => {
+    const ai = TAG_ORDER.indexOf(a);
+    const bi = TAG_ORDER.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.localeCompare(b);
+  });
+}
+
+export function visibleTags(tags: string[]): string[] {
+  return sortTags(tags).filter((tag) => !TECHNICAL_TAGS.has(tag));
+}
 
 interface TagBadgeProps {
   tag: string;
@@ -49,4 +93,15 @@ export function TagBadge({ tag, active, onClick, className, count }: TagBadgePro
   );
 }
 
-export const ALL_TAGS = ["discord", "youtube", "cloudflare", "games", "apex", "general"];
+export const ALL_TAGS = [
+  "recommended",
+  "apex",
+  "games",
+  "discord",
+  "youtube",
+  "cloudflare",
+  "provider",
+  "aggressive",
+  "experimental",
+  "legacy",
+];

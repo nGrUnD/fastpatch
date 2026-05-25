@@ -2,7 +2,7 @@ import { CheckCircle, Plus, Radar, Square } from "lucide-react";
 import { useState } from "react";
 import { AddStrategyModal } from "@/components/AddStrategyModal";
 import { StrategyCard } from "@/components/StrategyCard";
-import { ALL_TAGS, TagBadge } from "@/components/TagBadge";
+import { ALL_TAGS, TagBadge, sortTags } from "@/components/TagBadge";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 
@@ -14,6 +14,7 @@ export function StrategiesPage({ embedded = false }: { embedded?: boolean }) {
     isScanning,
     zapretInstalled,
     strategyScan,
+    scanProgress,
     scanAllStrategies,
     cancelStrategyScan,
     loadStrategies,
@@ -34,6 +35,19 @@ export function StrategiesPage({ embedded = false }: { embedded?: boolean }) {
 
   const scanDone = Object.keys(strategyScan).length > 0;
   const workingCount = Object.values(strategyScan).filter((e) => e.works).length;
+  const scanPercent =
+    scanProgress && scanProgress.total > 0
+      ? Math.min(100, Math.round((scanProgress.current / scanProgress.total) * 100))
+      : 0;
+
+  const formatDuration = (ms?: number) => {
+    if (ms == null) return "—";
+    const totalSeconds = Math.max(0, Math.round(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes === 0) return `${seconds} сек`;
+    return `${minutes} мин ${seconds.toString().padStart(2, "0")} сек`;
+  };
 
   const handleAutoScan = async () => {
     setScanMsg(null);
@@ -111,10 +125,32 @@ export function StrategiesPage({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {isScanning && (
-        <p className="text-xs text-zinc-400 animate-pulse">
-          Сканирование стратегий… Нажмите «Остановить», чтобы прервать и вернуть прежнее
-          подключение.
-        </p>
+        <section className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-amber-100">
+                Сканирование стратегий
+              </p>
+              <p className="text-xs text-amber-100/75">
+                {scanProgress?.current ?? 0} / {scanProgress?.total ?? strategies.length}
+                {scanProgress?.current_name && ` · сейчас: ${scanProgress.current_name}`}
+              </p>
+            </div>
+            <div className="text-right text-xs text-amber-100/75">
+              <p>Прошло: {formatDuration(scanProgress?.elapsed_ms)}</p>
+              <p>Осталось: {formatDuration(scanProgress?.eta_ms)}</p>
+            </div>
+          </div>
+          <div className="h-2 rounded-full bg-black/30 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-amber-400 transition-all"
+              style={{ width: `${scanPercent}%` }}
+            />
+          </div>
+          <p className="text-xs text-amber-100/65">
+            Нажмите «Остановить», чтобы прервать скан и вернуть прежнее подключение.
+          </p>
+        </section>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -138,7 +174,7 @@ export function StrategiesPage({ embedded = false }: { embedded?: boolean }) {
             {strategies.length}
           </span>
         </button>
-        {ALL_TAGS.map((tag) => (
+        {sortTags(ALL_TAGS).map((tag) => (
           <TagBadge
             key={tag}
             tag={tag}

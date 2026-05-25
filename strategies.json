@@ -3,7 +3,7 @@
     "id": "fake-tls-auto",
     "name": "FAKE TLS AUTO",
     "description": "Универсальная стратегия с подменой TLS, автоматический режим",
-    "tags": ["discord", "youtube", "cloudflare", "general"],
+    "tags": ["discord", "youtube", "cloudflare", "legacy", "general"],
     "source_bat": "general (FAKE TLS AUTO).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=fake,split2 --dpi-desync-autottl=2 --dpi-desync-fooling=md5sig --new"
   },
@@ -11,7 +11,7 @@
     "id": "fake-tls-auto-alt",
     "name": "FAKE TLS AUTO ALT",
     "description": "Альтернативная стратегия FAKE TLS AUTO",
-    "tags": ["discord", "youtube", "cloudflare", "general"],
+    "tags": ["discord", "youtube", "cloudflare", "legacy", "general"],
     "source_bat": "general (FAKE TLS AUTO ALT).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=fake,split2 --dpi-desync-autottl=2 --dpi-desync-fooling=badseq --new"
   },
@@ -19,7 +19,7 @@
     "id": "fake-tls-auto-alt2",
     "name": "FAKE TLS AUTO ALT2",
     "description": "Вторая альтернативная стратегия FAKE TLS",
-    "tags": ["discord", "youtube", "cloudflare"],
+    "tags": ["discord", "youtube", "cloudflare", "legacy"],
     "source_bat": "general (FAKE TLS AUTO ALT2).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=fake,split2 --dpi-desync-autottl=4 --dpi-desync-fooling=md5sig --new"
   },
@@ -27,7 +27,7 @@
     "id": "fake-tls-auto-alt3",
     "name": "FAKE TLS AUTO ALT3",
     "description": "Третья альтернативная стратегия FAKE TLS",
-    "tags": ["discord", "youtube", "cloudflare"],
+    "tags": ["discord", "youtube", "cloudflare", "legacy"],
     "source_bat": "general (FAKE TLS AUTO ALT3).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=fake,split2 --dpi-desync-autottl=4 --dpi-desync-fooling=badseq --new"
   },
@@ -35,7 +35,7 @@
     "id": "simple-fake-alt",
     "name": "SIMPLE FAKE ALT",
     "description": "Простая стратегия подмены без авто-TTL",
-    "tags": ["youtube", "cloudflare", "general"],
+    "tags": ["youtube", "cloudflare", "legacy", "general"],
     "source_bat": "general (SIMPLE FAKE ALT).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=fake --dpi-desync-ttl=5 --dpi-desync-fooling=md5sig --new"
   },
@@ -43,7 +43,7 @@
     "id": "simple-fake-alt2",
     "name": "SIMPLE FAKE ALT2",
     "description": "Вторая простая стратегия подмены",
-    "tags": ["youtube", "cloudflare", "general"],
+    "tags": ["youtube", "cloudflare", "legacy", "general"],
     "source_bat": "general (SIMPLE FAKE ALT2).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=fake --dpi-desync-ttl=5 --dpi-desync-fooling=badseq --new"
   },
@@ -59,7 +59,7 @@
     "id": "game-filter",
     "name": "GAME FILTER",
     "description": "Режим для игр — фильтрует UDP-трафик на высоких портах",
-    "tags": ["games", "cloudflare"],
+    "tags": ["games", "cloudflare", "legacy"],
     "source_bat": "general (GAME FILTER).bat",
     "args": "--wf-l3=ipv4 --wf-tcp=80,443 --wf-udp=443,1024-65535 --dpi-desync=fake,split2 --dpi-desync-autottl=2 --dpi-desync-fooling=md5sig --new"
   }

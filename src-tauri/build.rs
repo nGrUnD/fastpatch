@@ -8,6 +8,10 @@ fn main() {
     if zapret_extra.exists() {
         println!("cargo:rerun-if-changed={}", zapret_extra.display());
     }
+    let zapret2_extra = manifest_dir.join("../resources/zapret2-extra");
+    if zapret2_extra.exists() {
+        println!("cargo:rerun-if-changed={}", zapret2_extra.display());
+    }
     let icons_dir = manifest_dir.join("icons");
     for name in [
         "icon.ico",

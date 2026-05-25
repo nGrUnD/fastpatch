@@ -9,10 +9,10 @@ export function ZapretBanner() {
 
   return (
     <div className="mx-6 mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 shrink-0">
-      <p className="text-sm font-medium text-amber-200">Установка zapret</p>
+      <p className="text-sm font-medium text-amber-200">Установка Zapret 2</p>
       <p className="text-xs text-amber-200/70 mt-1">
-        FastPatch автоматически скачивает последнюю версию zapret с GitHub при первом запуске.
-        Нужны интернет и ~15 МБ на диск.
+        При «Подключить» скачивается bundle zapret2-youtube-discord с GitHub (~2 МБ).
+        Нужны интернет и права администратора.
       </p>
 
       {zapretMessage && (
@@ -35,7 +35,7 @@ export function ZapretBanner() {
           className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors"
         >
           <Download className="w-4 h-4" />
-          Установить zapret
+          Установить Zapret 2
         </button>
       )}
     </div>

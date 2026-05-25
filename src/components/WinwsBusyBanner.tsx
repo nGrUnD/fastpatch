@@ -2,7 +2,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 
 export function WinwsBusyBanner() {
-  const { winwsBusyHint, isLoading, killWinws, clearWinwsBusyHint } = useAppStore();
+  const { winwsBusyHint, loading, killWinws, clearWinwsBusyHint } = useAppStore();
 
   if (!winwsBusyHint) return null;
 
@@ -14,7 +14,7 @@ export function WinwsBusyBanner() {
         <button
           type="button"
           onClick={() => killWinws()}
-          disabled={isLoading}
+          disabled={loading.killWinws}
           className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-600/90 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
         >
           Снять задачу

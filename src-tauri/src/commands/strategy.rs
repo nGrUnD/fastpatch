@@ -5,21 +5,48 @@ use super::probe::{
     AUTODETECT_TIMEOUT_SECS, PROBE_TIMEOUT_MS, PROBE_TIMEOUT_SECS,
 };
 use super::strategy_loader;
+use super::preset_loader;
 use super::strategy_runner::{
     find_winws_pid, run_zapret_preamble, spawn_strategy_bat_with_options, stop_all_winws_and_wait,
     SpawnOptions, WINWS_BUSY_PREFIX, WINWS_FAST_WARMUP_MS,
 };
-use crate::paths::zapret_dir;
+use super::zapret2_runner::{find_winws2_pid, spawn_preset_with_options};
+use super::zapret_backend::{self, ZapretBackend};
+use crate::paths::{ensure_winws, ensure_winws2, zapret_dir, zapret2_dir};
 use super::Strategy;
-use crate::paths::ensure_winws;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::State;
 
 /// Флаг отмены автоскана (см. `cancel_strategy_scan`).
 pub struct ScanCancelState(pub Arc<AtomicBool>);
+
+#[derive(Debug, Clone)]
+pub struct ScanProgressState(pub Arc<Mutex<Option<ScanProgressInner>>>);
+
+#[derive(Debug, Clone)]
+pub struct ScanProgressInner {
+    pub current: usize,
+    pub total: usize,
+    pub current_id: Option<String>,
+    pub current_name: Option<String>,
+    pub started_at: Instant,
+    pub finished: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScanProgress {
+    pub current: usize,
+    pub total: usize,
+    pub current_id: Option<String>,
+    pub current_name: Option<String>,
+    pub elapsed_ms: u64,
+    pub avg_ms_per_strategy: Option<u64>,
+    pub eta_ms: Option<u64>,
+    pub finished: bool,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StrategyScanEntry {
@@ -49,6 +76,10 @@ pub struct ZapretStatus {
     pub installed: bool,
     pub winws_path: String,
     pub zapret_dir: String,
+    /// `v2` или `v1`
+    pub backend: String,
+    pub v1_installed: bool,
+    pub v2_installed: bool,
 }
 
 #[derive(Clone)]
@@ -77,7 +108,7 @@ struct SessionSnapshot {
 fn stop_child(state: &ProcessState) {
     let mut guard = state.0.lock().unwrap();
     guard.take();
-    stop_all_winws_and_wait(4000);
+    zapret_backend::kill_all_processes_and_wait(4000);
 }
 
 fn pause_session(state: &ProcessState) -> Option<SessionSnapshot> {
@@ -119,33 +150,79 @@ fn spawn_strategy(strategy: &Strategy) -> Result<u32, String> {
 }
 
 fn spawn_strategy_with_options(strategy: &Strategy, opts: SpawnOptions) -> Result<u32, String> {
-    ensure_winws()?;
-    spawn_strategy_bat_with_options(&strategy.source_bat, opts)
+    match zapret_backend::current() {
+        ZapretBackend::V2 => {
+            ensure_winws2()?;
+            spawn_preset_with_options(&strategy.source_bat, opts)
+        }
+        ZapretBackend::V1 => {
+            ensure_winws()?;
+            spawn_strategy_bat_with_options(&strategy.source_bat, opts)
+        }
+    }
+}
+
+fn live_engine_pid() -> Option<u32> {
+    match zapret_backend::current() {
+        ZapretBackend::V2 => find_winws2_pid(),
+        ZapretBackend::V1 => find_winws_pid(),
+    }
+}
+
+fn ensure_engine() -> Result<(), String> {
+    match zapret_backend::current() {
+        ZapretBackend::V2 => ensure_winws2().map(|_| ()),
+        ZapretBackend::V1 => ensure_winws().map(|_| ()),
+    }
 }
 
 fn strategies_for_autodetect(strategies: &[Strategy]) -> Vec<&Strategy> {
     let mut list: Vec<&Strategy> = strategies.iter().collect();
     list.sort_by(|a, b| {
-        strategy_loader::autodetect_priority(&a.id, &a.source_bat)
-            .cmp(&strategy_loader::autodetect_priority(&b.id, &b.source_bat))
+        match zapret_backend::current() {
+            ZapretBackend::V2 => preset_loader::autodetect_priority(&a.id)
+                .cmp(&preset_loader::autodetect_priority(&b.id)),
+            ZapretBackend::V1 => strategy_loader::autodetect_priority(&a.id, &a.source_bat)
+                .cmp(&strategy_loader::autodetect_priority(&b.id, &b.source_bat)),
+        }
     });
     list
 }
 
 #[tauri::command]
 pub fn get_zapret_status() -> ZapretStatus {
-    let dir = crate::paths::zapret_dir();
-    let winws = crate::paths::winws_path();
+    let backend = zapret_backend::current();
+    let v1_installed = crate::paths::winws_path().is_file();
+    let v2_installed = super::zapret2_updater::zapret2_installed();
+    let (installed, winws_path, zapret_dir) = match backend {
+        ZapretBackend::V2 => {
+            let p = crate::paths::winws2_path();
+            (v2_installed, p.display().to_string(), zapret2_dir().display().to_string())
+        }
+        ZapretBackend::V1 => {
+            let p = crate::paths::winws_path();
+            (v1_installed, p.display().to_string(), zapret_dir().display().to_string())
+        }
+    };
     ZapretStatus {
-        installed: winws.is_file(),
-        winws_path: winws.display().to_string(),
-        zapret_dir: dir.display().to_string(),
+        installed,
+        winws_path,
+        zapret_dir,
+        backend: match backend {
+            ZapretBackend::V2 => "v2".into(),
+            ZapretBackend::V1 => "v1".into(),
+        },
+        v1_installed,
+        v2_installed,
     }
 }
 
 #[tauri::command]
 pub fn get_strategies() -> Result<Vec<Strategy>, String> {
-    strategy_loader::load_strategies()
+    match zapret_backend::current() {
+        ZapretBackend::V2 => preset_loader::load_presets(),
+        ZapretBackend::V1 => strategy_loader::load_strategies(),
+    }
 }
 
 pub fn get_active_strategy_inner(state: &ProcessState) -> Option<ActiveStrategy> {
@@ -153,7 +230,7 @@ pub fn get_active_strategy_inner(state: &ProcessState) -> Option<ActiveStrategy>
     let Some((id, name, _)) = guard.as_ref() else {
         return None;
     };
-    let live_pid = find_winws_pid();
+    let live_pid = live_engine_pid();
     if live_pid.is_none() {
         guard.take();
         return None;
@@ -198,14 +275,20 @@ pub fn stop_strategy(state: State<ProcessState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Принудительно завершить все winws.exe (если мешают подключению стратегии).
+/// Принудительно завершить winws / winws2.
 #[tauri::command]
 pub fn kill_winws(state: State<ProcessState>) -> Result<(), String> {
     stop_child(&state);
-    stop_all_winws_and_wait(8000);
+    zapret_backend::kill_all_processes_and_wait(8000);
     if let Some(pid) = find_winws_pid() {
         return Err(format!(
             "{WINWS_BUSY_PREFIX}winws.exe всё ещё работает (PID {pid}). \
+             Закройте zapret вручную или перезапустите fastpatch от имени администратора."
+        ));
+    }
+    if let Some(pid) = find_winws2_pid() {
+        return Err(format!(
+            "{WINWS_BUSY_PREFIX}winws2.exe всё ещё работает (PID {pid}). \
              Закройте zapret вручную или перезапустите fastpatch от имени администратора."
         ));
     }
@@ -256,7 +339,7 @@ fn scan_results_work(results: &[TestResult]) -> bool {
 
 #[tauri::command]
 pub async fn test_strategy(id: String, state: State<'_, ProcessState>) -> Result<Vec<TestResult>, String> {
-    ensure_winws()?;
+    ensure_engine()?;
     let strategies = get_strategies()?;
     let strategy = strategies
         .iter()
@@ -269,7 +352,7 @@ pub async fn test_strategy(id: String, state: State<'_, ProcessState>) -> Result
     });
     let testing_active = snap.as_ref().map(|s| s.id == id).unwrap_or(false);
 
-    if testing_active && find_winws_pid().is_some() {
+    if testing_active && live_engine_pid().is_some() {
         tokio::time::sleep(Duration::from_millis(1500)).await;
     } else {
         stop_child(&state);
@@ -298,7 +381,7 @@ pub async fn test_strategy(id: String, state: State<'_, ProcessState>) -> Result
 
 #[tauri::command]
 pub async fn auto_detect_strategy(state: State<'_, ProcessState>) -> Result<Option<String>, String> {
-    ensure_winws()?;
+    ensure_engine()?;
     let strategies = get_strategies()?;
     let ordered = strategies_for_autodetect(&strategies);
 
@@ -371,6 +454,61 @@ fn scan_is_cancelled(cancel: &ScanCancelState) -> bool {
     cancel.0.load(Ordering::Relaxed)
 }
 
+fn set_scan_progress(
+    progress: &ScanProgressState,
+    current: usize,
+    total: usize,
+    current_id: Option<String>,
+    current_name: Option<String>,
+    finished: bool,
+) {
+    let mut guard = progress.0.lock().unwrap();
+    let started_at = guard
+        .as_ref()
+        .map(|p| p.started_at)
+        .unwrap_or_else(Instant::now);
+    *guard = Some(ScanProgressInner {
+        current,
+        total,
+        current_id,
+        current_name,
+        started_at,
+        finished,
+    });
+}
+
+fn finish_scan_progress(progress: &ScanProgressState) {
+    let mut guard = progress.0.lock().unwrap();
+    if let Some(p) = guard.as_mut() {
+        p.current_id = None;
+        p.current_name = None;
+        p.finished = true;
+    }
+}
+
+#[tauri::command]
+pub fn get_scan_progress(progress: State<ScanProgressState>) -> Option<ScanProgress> {
+    let guard = progress.0.lock().unwrap();
+    let p = guard.as_ref()?;
+    let elapsed_ms = p.started_at.elapsed().as_millis() as u64;
+    let avg_ms_per_strategy = if p.current > 0 {
+        Some(elapsed_ms / p.current as u64)
+    } else {
+        None
+    };
+    let eta_ms = avg_ms_per_strategy.map(|avg| avg * p.total.saturating_sub(p.current) as u64);
+    Some(ScanProgress {
+        current: p.current,
+        total: p.total,
+        current_id: p.current_id.clone(),
+        current_name: p.current_name.clone(),
+        elapsed_ms,
+        avg_ms_per_strategy,
+        eta_ms,
+        finished: p.finished,
+    })
+}
+
 async fn sleep_scan_ms(ms: u64, cancel: &ScanCancelState) -> bool {
     let mut left = ms;
     while left > 0 {
@@ -394,10 +532,12 @@ pub fn cancel_strategy_scan(cancel: State<'_, ScanCancelState>) {
 pub async fn scan_all_strategies(
     state: State<'_, ProcessState>,
     cancel: State<'_, ScanCancelState>,
+    progress: State<'_, ScanProgressState>,
 ) -> Result<ScanAllResult, String> {
-    ensure_winws()?;
+    ensure_engine()?;
     cancel.0.store(false, Ordering::Relaxed);
     let strategies = get_strategies()?;
+    set_scan_progress(&progress, 0, strategies.len(), None, None, false);
     let paused = pause_session(&state);
     let previous_name = paused.as_ref().map(|s| s.name.clone());
 
@@ -406,6 +546,7 @@ pub async fn scan_all_strategies(
     run_zapret_preamble(&zapret_dir(), true);
     if !sleep_scan_ms(600, &cancel).await {
         let restored_previous = resume_session(&state, paused, &strategies, SpawnOptions::default());
+        finish_scan_progress(&progress);
         return Ok(ScanAllResult {
             entries: vec![],
             restored_previous,
@@ -427,6 +568,14 @@ pub async fn scan_all_strategies(
         }
         let opts = SpawnOptions::for_scan_iteration(scan_index == 0);
         scan_index += 1;
+        set_scan_progress(
+            &progress,
+            entries.len(),
+            strategies.len(),
+            Some(strategy.id.clone()),
+            Some(strategy.name.clone()),
+            false,
+        );
         let pid = match spawn_strategy_with_options(strategy, opts) {
             Ok(p) => p,
             Err(e) => {
@@ -444,6 +593,7 @@ pub async fn scan_all_strategies(
                     results: vec![err],
                     works: false,
                 });
+                set_scan_progress(&progress, entries.len(), strategies.len(), None, None, false);
                 continue;
             }
         };
@@ -471,6 +621,7 @@ pub async fn scan_all_strategies(
             results,
             works,
         });
+        set_scan_progress(&progress, entries.len(), strategies.len(), None, None, false);
 
         stop_child(&state);
 
@@ -486,6 +637,7 @@ pub async fn scan_all_strategies(
         &strategies,
         SpawnOptions::default(),
     );
+    finish_scan_progress(&progress);
 
     Ok(ScanAllResult {
         entries,
@@ -505,15 +657,15 @@ pub fn add_custom_strategy(display_name: String, content: String) -> Result<Stra
 pub async fn test_media_connectivity(
     state: State<'_, ProcessState>,
 ) -> Result<Vec<TestResult>, String> {
-    ensure_winws()?;
+    ensure_engine()?;
     let active_id = {
         let guard = state.0.lock().unwrap();
         guard.as_ref().map(|(id, _, _)| id.clone())
     };
     let id = active_id.ok_or("Сначала запустите стратегию")?;
 
-    if find_winws_pid().is_none() {
-        return Err("winws.exe не запущен. Перезапустите стратегию.".into());
+    if live_engine_pid().is_none() {
+        return Err("Обход не запущен. Перезапустите стратегию.".into());
     }
 
     let strategies = get_strategies()?;
@@ -534,7 +686,7 @@ pub async fn test_media_connectivity(
 /// Auto-detect among strategies tagged for Apex (faster than full scan).
 #[tauri::command]
 pub async fn auto_detect_apex_strategy(state: State<'_, ProcessState>) -> Result<Option<String>, String> {
-    ensure_winws()?;
+    ensure_engine()?;
     let strategies = get_strategies()?;
     let apex_only: Vec<_> = strategies
         .iter()
@@ -543,7 +695,7 @@ pub async fn auto_detect_apex_strategy(state: State<'_, ProcessState>) -> Result
 
     if apex_only.is_empty() {
         return Err(
-            "Нет стратегий с тегом Apex. Нажмите «Установить пресет Apex» в настройках или на главной.".into(),
+            "Нет стратегий с тегом Apex. В «Расширенные» нажмите «Установить пресет» в панели Apex Legends.".into(),
         );
     }
 

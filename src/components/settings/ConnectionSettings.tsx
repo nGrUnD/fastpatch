@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle, Loader2, Stethoscope, Wand2 } from "lucide-react";
+import { CheckCircle, Loader2, Stethoscope, Wand2 } from "lucide-react";
 import { useState } from "react";
 import {
   probeBadgeClass,
@@ -6,25 +6,22 @@ import {
   probeLabel,
   scoreConnectivityProbe,
 } from "@/lib/probeUi";
-import { TagBadge } from "@/components/TagBadge";
+import { TagBadge, visibleTags } from "@/components/TagBadge";
 import { cn } from "@/lib/utils";
-import { ApexPanel } from "@/components/ApexPanel";
 import { useAppStore } from "@/stores/appStore";
 
-export function ConnectionSettings({
-  onOpenStrategies,
-}: {
-  onOpenStrategies: () => void;
-}) {
+export function ConnectionSettings() {
   const {
     strategies,
     activeStrategy,
-    isLoading,
+    loading,
     zapretInstalled,
+    zapretBackend,
     autoDetect,
     startStrategy,
     testMediaConnectivity,
   } = useAppStore();
+  const isV2 = zapretBackend === "v2";
 
   const [autoMsg, setAutoMsg] = useState<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
@@ -32,6 +29,9 @@ export function ConnectionSettings({
     Awaited<ReturnType<typeof testMediaConnectivity>> | null
   >(null);
   const [mediaProbing, setMediaProbing] = useState(false);
+  const activeStrategyInfo = activeStrategy
+    ? strategies.find((s) => s.id === activeStrategy.id)
+    : null;
 
   const handleAutoDetect = async () => {
     setIsAutoDetecting(true);
@@ -51,14 +51,15 @@ export function ConnectionSettings({
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-5">
-        <h2 className="text-sm font-semibold text-white mb-1">Автоподбор</h2>
+        <h2 className="text-sm font-semibold text-white mb-1">Автоподбор стратегии</h2>
         <p className="text-xs text-zinc-400 mb-4">
-          То же, что «Подключить» на главной: Discord + YouTube, первая рабочая стратегия.
+          То же, что «Подключить» на главной: Discord + YouTube, первый рабочий{" "}
+          {isV2 ? "пресет" : "вариант стратегии"}.
         </p>
         <button
           type="button"
           onClick={handleAutoDetect}
-          disabled={isAutoDetecting || isLoading || !zapretInstalled}
+          disabled={isAutoDetecting || loading.startStrategy || !zapretInstalled}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium"
         >
           {isAutoDetecting ? (
@@ -78,16 +79,15 @@ export function ConnectionSettings({
 
       {activeStrategy && (
         <section className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-5">
-          <h2 className="text-sm font-semibold text-white mb-1">Проверка связи</h2>
+          <h2 className="text-sm font-semibold text-white mb-1">Активная стратегия</h2>
           <p className="text-xs text-zinc-400 mb-3">
-            По тегам активной стратегии: Discord, YouTube, Cloudflare CDN, EA/Apex и др.
+            {activeStrategy.name}. Проверка идёт по тегам: Discord, YouTube, Cloudflare CDN,
+            EA/Apex и др.
           </p>
           <div className="flex flex-wrap gap-1 mb-3">
-            {activeStrategy &&
-              strategies
-                .find((s) => s.id === activeStrategy.id)
-                ?.tags.filter((t) => t !== "general")
-                .map((tag) => <TagBadge key={tag} tag={tag} />)}
+            {visibleTags(activeStrategyInfo?.tags ?? []).map((tag) => (
+              <TagBadge key={tag} tag={tag} />
+            ))}
           </div>
           <button
             type="button"
@@ -100,7 +100,7 @@ export function ConnectionSettings({
                 setMediaProbing(false);
               }
             }}
-            disabled={isLoading || mediaProbing}
+            disabled={loading.startStrategy || mediaProbing}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-600 disabled:opacity-40 text-sm text-white"
           >
             {mediaProbing ? (
@@ -128,10 +128,9 @@ export function ConnectionSettings({
             </div>
           )}
           {mediaProbe && (() => {
-            const strategy = strategies.find((s) => s.id === activeStrategy.id);
             const { warnings, notes } = scoreConnectivityProbe(
               mediaProbe,
-              strategy?.tags ?? []
+              activeStrategyInfo?.tags ?? []
             );
             return (
               <div className="mt-2 space-y-1">
@@ -159,27 +158,17 @@ export function ConnectionSettings({
 
       {zapretInstalled && strategies.length > 0 && (
         <section className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-white">Ручной выбор ALT</h2>
-            <button
-              type="button"
-              onClick={onOpenStrategies}
-              className="text-xs text-zinc-400 hover:text-white flex items-center gap-1"
-            >
-              Все стратегии
-              <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
+          <h2 className="text-sm font-semibold text-white mb-3">Ручной выбор стратегии</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto">
             {strategies
-              .filter((s) => /^ALT\d*$/i.test(s.name) || s.name === "ALT")
+              .filter((s) => isV2 || /^ALT\d*$/i.test(s.name) || s.name === "ALT")
               .slice(0, 12)
               .map((s) => (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => startStrategy(s.id)}
-                  disabled={isLoading}
+                  disabled={loading.startStrategy}
                   className={cn(
                     "px-3 py-2 rounded-lg border text-xs font-medium transition-colors",
                     activeStrategy?.id === s.id
@@ -192,12 +181,10 @@ export function ConnectionSettings({
               ))}
           </div>
           <p className="text-xs text-zinc-500 mt-2">
-            Полный список — вкладка «Стратегии».
+            Полный список ниже.
           </p>
         </section>
       )}
-
-      {zapretInstalled && <ApexPanel />}
     </div>
   );
 }

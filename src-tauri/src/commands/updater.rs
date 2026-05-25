@@ -244,13 +244,19 @@ fn verify_install() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn check_for_updates() -> Result<ReleaseInfo, String> {
-    let release = fetch_latest_release().await?;
-    Ok(release_to_info(release))
+    match crate::commands::zapret_backend::current() {
+        crate::commands::zapret_backend::ZapretBackend::V2 => {
+            crate::commands::zapret2_updater::check_for_updates_v2().await
+        }
+        crate::commands::zapret_backend::ZapretBackend::V1 => {
+            let release = fetch_latest_release().await?;
+            Ok(release_to_info(release))
+        }
+    }
 }
 
-/// Full zapret install from GitHub (first run / repair).
-#[tauri::command]
-pub async fn install_zapret() -> Result<String, String> {
+/// Full zapret 1 install from GitHub (first run / repair).
+pub async fn install_zapret_v1() -> Result<String, String> {
     let release = fetch_latest_release().await?;
     let download_url = pick_zip_url(&release)?;
     let tag_name = release.tag_name.clone();
@@ -265,15 +271,33 @@ pub async fn install_zapret() -> Result<String, String> {
         .map_err(|e| format!("Ошибка сохранения версии: {e}"))?;
 
     Ok(format!(
-        "Zapret {} установлен в {} ({} файлов). Пресет Apex добавлен.",
+        "Zapret 1 {} установлен в {} ({} файлов). Пресет Apex добавлен.",
         tag_name,
         target_dir.display(),
         written
     ))
 }
 
+/// Установка ядра по настройке (Zapret 2 по умолчанию).
+#[tauri::command]
+pub async fn install_zapret() -> Result<String, String> {
+    match crate::commands::zapret_backend::current() {
+        crate::commands::zapret_backend::ZapretBackend::V2 => {
+            crate::commands::zapret2_updater::install_zapret2_inner().await
+        }
+        crate::commands::zapret_backend::ZapretBackend::V1 => install_zapret_v1().await,
+    }
+}
+
 #[tauri::command]
 pub async fn apply_update(download_url: String, tag_name: String) -> Result<String, String> {
+    if matches!(
+        crate::commands::zapret_backend::current(),
+        crate::commands::zapret_backend::ZapretBackend::V2
+    ) {
+        return crate::commands::zapret2_updater::apply_update_v2(download_url, tag_name).await;
+    }
+
     if download_url.is_empty() {
         return install_zapret().await;
     }
@@ -295,5 +319,10 @@ pub async fn apply_update(download_url: String, tag_name: String) -> Result<Stri
 
 #[tauri::command]
 pub fn get_current_version() -> String {
-    read_current_version()
+    match crate::commands::zapret_backend::current() {
+        crate::commands::zapret_backend::ZapretBackend::V2 => {
+            crate::commands::zapret2_updater::read_current_version()
+        }
+        crate::commands::zapret_backend::ZapretBackend::V1 => read_current_version(),
+    }
 }

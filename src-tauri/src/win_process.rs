@@ -57,6 +57,24 @@ pub fn ensure_app_elevated() -> Result<(), String> {
     relaunch_as_admin()
 }
 
+/// Zapret 2: один аргумент `@path\to\preset-active.txt`, cwd — корень bundle.
+pub fn spawn_winws2(exe: &Path, at_preset_arg: &str, cwd: &Path) -> Result<(), String> {
+    if !is_elevated() {
+        return Err(
+            "Нет прав администратора. В fastpatch нажмите «Запустить от имени администратора»."
+                .to_string(),
+        );
+    }
+
+    Command::new(exe)
+        .current_dir(cwd)
+        .arg(at_preset_arg)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map_err(|e| format!("Не удалось запустить winws2.exe: {e}"))?;
+    Ok(())
+}
+
 pub fn spawn_winws(exe: &Path, args: &[String], cwd: &Path) -> Result<u32, String> {
     if !is_elevated() {
         return Err(

@@ -188,30 +188,40 @@ fn bat_to_id(filename: &str) -> String {
 fn infer_tags(filename: &str, content: &str) -> Vec<String> {
     let lower = format!("{filename} {content}").to_lowercase();
     let mut tags = Vec::new();
+    let mut push = |tag: &str| {
+        if !tags.iter().any(|t| t == tag) {
+            tags.push(tag.to_string());
+        }
+    };
 
     if filename.to_uppercase().contains("APEX")
         || lower.contains("list-apex.txt")
         || lower.contains("list-apex-extra.txt")
         || lower.contains("ipset-exclude-apex-ea")
     {
-        tags.push("apex".to_string());
+        push("apex");
+        push("games");
+        push("recommended");
     }
     if lower.contains("discord") {
-        tags.push("discord".to_string());
+        push("discord");
     }
     if lower.contains("youtube") || lower.contains("googlevideo") {
-        tags.push("youtube".to_string());
+        push("youtube");
     }
     if lower.contains("gamefilter") {
-        tags.push("games".to_string());
+        push("games");
     }
     if lower.contains("cloudflare")
         || filename.to_lowercase().starts_with("general")
     {
-        tags.push("cloudflare".to_string());
+        push("cloudflare");
+    }
+    if lower.contains("fake tls auto") || lower.contains("simple fake") || lower.contains(" alt") {
+        push("legacy");
     }
 
-    tags.push("general".to_string());
+    push("general");
     tags
 }
 
@@ -324,6 +334,38 @@ pub fn split_command_line(line: &str) -> Vec<String> {
         args.push(current);
     }
     args
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_command_line_keeps_quoted_paths() {
+        let args = split_command_line(r#"--hostlist="C:\zapret lists\list.txt" --flag value"#);
+        assert_eq!(
+            args,
+            vec![
+                "--hostlist=C:\\zapret lists\\list.txt",
+                "--flag",
+                "value"
+            ]
+        );
+    }
+
+    #[test]
+    fn bat_to_id_handles_alt_apex_names() {
+        assert_eq!(bat_to_id("general (ALT11 APEX).bat"), "alt11-apex");
+        assert_eq!(bat_to_id("general.bat"), "general");
+    }
+
+    #[test]
+    fn infer_tags_marks_apex_as_game_and_recommended() {
+        let tags = infer_tags("general (ALT11 APEX).bat", "list-apex.txt ipset-exclude-apex-ea");
+        assert!(tags.iter().any(|t| t == "apex"));
+        assert!(tags.iter().any(|t| t == "games"));
+        assert!(tags.iter().any(|t| t == "recommended"));
+    }
 }
 
 fn strategy_from_bat_path(path: &Path, root: &Path) -> Result<Strategy, String> {

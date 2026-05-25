@@ -152,6 +152,45 @@ pub fn find_zapret_extra_file(relative: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
+/// Файлы пресета Apex для Zapret 2 (MSI/NSIS, dev).
+pub fn find_zapret2_extra_file(relative: &str) -> Option<PathBuf> {
+    let rel = relative.replace('\\', "/");
+    let file_name = PathBuf::from(&rel)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&rel)
+        .to_string();
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    let rel_suffixes = [
+        rel.clone(),
+        format!("zapret2-extra/{rel}"),
+        format!("resources/zapret2-extra/{rel}"),
+        format!("_up_/resources/zapret2-extra/{rel}"),
+        file_name,
+    ];
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for rp in rel_suffixes {
+                candidates.push(dir.join(rp));
+            }
+        }
+    }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(
+        manifest
+            .join("..")
+            .join("resources")
+            .join("zapret2-extra")
+            .join(&rel),
+    );
+
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 pub fn data_file_or_err(filename: &str) -> Result<PathBuf, String> {
     find_data_file(filename).ok_or_else(|| {
         let hint = std::env::current_exe()
@@ -169,7 +208,73 @@ pub fn ensure_winws() -> Result<PathBuf, String> {
         Ok(path)
     } else {
         Err(format!(
-            "winws.exe не найден: {}.\n\nУстановите zapret: на главной нажмите «Скачать zapret» или положите папку zapret (с bin/winws.exe) рядом с fastpatch.exe.",
+            "winws.exe не найден: {}.\n\nУстановите zapret: на главной нажмите «Подключить» или положите папку zapret (с bin/winws.exe) рядом с fastpatch.exe.",
+            path.display()
+        ))
+    }
+}
+
+fn zapret2_install_base() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Корень bundle Zapret 2 (zapret2-youtube-discord): `exe/winws2.exe`.
+pub fn zapret2_dir() -> PathBuf {
+    find_zapret2_dir().unwrap_or_else(|| zapret2_install_base().join("zapret2"))
+}
+
+pub fn find_zapret2_dir() -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            candidates.push(parent.join("zapret2"));
+            let mut dir = Some(parent.to_path_buf());
+            for _ in 0..8 {
+                if let Some(ref d) = dir {
+                    candidates.push(d.join("zapret2"));
+                    dir = d.parent().map(|p| p.to_path_buf());
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("zapret2"));
+    }
+
+    for dir in candidates {
+        if dir.join("exe").join("winws2.exe").is_file() {
+            return Some(dir);
+        }
+    }
+    None
+}
+
+pub fn winws2_path() -> PathBuf {
+    zapret2_dir().join("exe").join("winws2.exe")
+}
+
+pub fn ensure_current_engine() -> Result<PathBuf, String> {
+    use crate::app_prefs::{load, ZapretBackendPref};
+    match load().zapret_backend {
+        ZapretBackendPref::V2 => ensure_winws2(),
+        ZapretBackendPref::V1 => ensure_winws(),
+    }
+}
+
+pub fn ensure_winws2() -> Result<PathBuf, String> {
+    let path = winws2_path();
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "winws2.exe не найден: {}.\n\nНажмите «Подключить» на главной — fastpatch установит Zapret 2.",
             path.display()
         ))
     }

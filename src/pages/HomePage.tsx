@@ -6,20 +6,26 @@ import { useAppStore } from "@/stores/appStore";
 export function HomePage() {
   const {
     activeStrategy,
-    isLoading,
+    loading,
     zapretInstalled,
     zapretInstalling,
     autoDetect,
     stopStrategy,
     installZapret,
     loadActiveStrategy,
-    setPage,
+    openSettings,
   } = useAppStore();
 
   const [isConnecting, setIsConnecting] = useState(false);
 
-  const isBusy = isLoading || isConnecting || zapretInstalling;
+  const isBusy =
+    loading.startStrategy ||
+    loading.stopStrategy ||
+    loading.installZapret ||
+    isConnecting ||
+    zapretInstalling;
   const connected = Boolean(activeStrategy);
+  const isApexActive = activeStrategy?.name.toUpperCase().includes("APEX") ?? false;
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -55,7 +61,7 @@ export function HomePage() {
           <p className="text-sm text-zinc-400">
             {connected
               ? `Подключено · ${activeStrategy?.name}`
-              : "Обход Discord и YouTube"}
+              : "Обход Discord, YouTube и игровых сценариев"}
           </p>
         </div>
 
@@ -84,7 +90,7 @@ export function HomePage() {
             {isBusy ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                {zapretInstalling ? "Установка zapret…" : "Подключение…"}
+                {zapretInstalling ? "Установка Zapret 2…" : "Подключение…"}
               </>
             ) : (
               <>
@@ -97,15 +103,25 @@ export function HomePage() {
 
         <p className="text-xs text-zinc-500 leading-relaxed">
           {connected
-            ? "После смены стратегии перезапустите Discord и YouTube из трея."
-            : "Автоматически подберёт рабочую стратегию для Discord и YouTube."}
+            ? isApexActive
+              ? "Для Apex после смены пресета полностью перезапустите игру."
+              : "После смены стратегии перезапустите Discord и YouTube из трея."
+            : "Автоматически подберёт рабочий пресет для Discord и YouTube. Apex — во вкладке «Игры»."}
           {" "}
           <button
             type="button"
-            onClick={() => setPage("settings")}
+            onClick={() => openSettings("connection")}
             className="text-zinc-400 hover:text-white underline underline-offset-2"
           >
             Настройки
+          </button>
+          {" · "}
+          <button
+            type="button"
+            onClick={() => openSettings("games")}
+            className="text-zinc-400 hover:text-white underline underline-offset-2"
+          >
+            Игры / Apex
           </button>
         </p>
       </div>

@@ -16,11 +16,12 @@ use commands::apex::{get_apex_status, setup_apex_preset, test_apex_connectivity}
 use commands::autostart_connect::try_autostart_connect;
 use commands::strategy::{
     add_custom_strategy, auto_detect_apex_strategy, auto_detect_strategy, get_active_strategy,
-    cancel_strategy_scan, get_strategies, get_zapret_status, kill_winws, scan_all_strategies,
-    start_strategy, stop_strategy, test_media_connectivity, test_strategy, ProcessState,
-    ScanCancelState,
+    cancel_strategy_scan, get_scan_progress, get_strategies, get_zapret_status, kill_winws,
+    scan_all_strategies, start_strategy, stop_strategy, test_media_connectivity, test_strategy,
+    ProcessState, ScanCancelState, ScanProgressState,
 };
 use commands::updater::{apply_update, check_for_updates, get_current_version, install_zapret};
+use commands::zapret_backend::{self, ZapretBackend};
 use commands::zapret_config::{
     get_zapret_settings, set_auto_update_check, set_game_filter, set_ipset_mode,
     update_ipset_list, update_zapret_hosts_file,
@@ -73,6 +74,15 @@ fn get_app_prefs() -> app_prefs::AppPrefs {
 #[tauri::command]
 fn set_auto_connect_on_autostart(enabled: bool) -> Result<(), String> {
     app_prefs::set_auto_connect_on_autostart(enabled)
+}
+
+#[tauri::command]
+fn set_zapret_backend(backend: String) -> Result<(), String> {
+    let b = match backend.to_lowercase().as_str() {
+        "v1" => ZapretBackend::V1,
+        _ => ZapretBackend::V2,
+    };
+    zapret_backend::set_current(b)
 }
 
 #[tauri::command]
@@ -208,6 +218,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(ProcessState(Arc::new(Mutex::new(None))))
         .manage(ScanCancelState(Arc::new(AtomicBool::new(false))))
+        .manage(ScanProgressState(Arc::new(Mutex::new(None))))
         .manage(HostsState)
         .setup(|app| {
             let from_autostart = launch::autostart_session();
@@ -269,6 +280,7 @@ pub fn run() {
             test_media_connectivity,
             auto_detect_strategy,
             scan_all_strategies,
+            get_scan_progress,
             cancel_strategy_scan,
             add_custom_strategy,
             auto_detect_apex_strategy,
@@ -298,6 +310,7 @@ pub fn run() {
             set_autostart_enabled,
             get_app_prefs,
             set_auto_connect_on_autostart,
+            set_zapret_backend,
             try_autostart_connect,
             show_window,
             hide_to_tray,

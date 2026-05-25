@@ -20,19 +20,18 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
+import { ApexPanel } from "@/components/ApexPanel";
 import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
 import { cn } from "@/lib/utils";
 import { HostsPage } from "@/pages/HostsPage";
 import { StrategiesPage } from "@/pages/StrategiesPage";
-import { useAppStore } from "@/stores/appStore";
-
-type SettingsTab = "connection" | "strategies" | "hosts" | "system";
+import { type SettingsTab, useAppStore } from "@/stores/appStore";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "connection", label: "Подключение" },
   { id: "strategies", label: "Стратегии" },
-  { id: "hosts", label: "Hosts" },
-  { id: "system", label: "Система" },
+  { id: "games", label: "Игры" },
+  { id: "advanced", label: "Дополнительно" },
 ];
 
 function Toggle({
@@ -113,22 +112,18 @@ function SelectSetting({
   );
 }
 
-function SystemSettings() {
+function ConnectionSettingsTab() {
   const {
     autostart,
     autoConnectOnAutostart,
     setAutoConnectOnAutostart,
+    zapretBackend,
+    setZapretBackend,
     zapretInstalled,
-    zapretSettings,
-    isLoading,
+    loading,
     releaseInfo,
     updateCheckError,
     setAutostart,
-    setGameFilter,
-    setIpsetMode,
-    setZapretAutoUpdate,
-    updateIpsetList,
-    updateZapretHosts,
     checkUpdates,
     installZapret,
     applyUpdate,
@@ -160,15 +155,27 @@ function SystemSettings() {
     }
   };
 
-  const gameValue =
-    zapretSettings?.game_filter === "disabled" || !zapretSettings?.game_filter
-      ? "disabled"
-      : zapretSettings.game_filter;
+  const isV1 = zapretBackend === "v1";
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-zinc-700 bg-zinc-800/50 divide-y divide-zinc-700/50 px-5">
         <h2 className="text-sm font-semibold text-white pt-4 pb-1">Приложение</h2>
+        <SettingRow
+          icon={Shield}
+          title="Ядро обхода"
+          description="Zapret 2 — основной режим. Zapret 1 оставлен как запасной legacy-режим."
+        >
+          <SelectSetting
+            value={zapretBackend}
+            disabled={loading.settings}
+            onChange={(v) => setZapretBackend(v as "v2" | "v1")}
+            options={[
+              { value: "v2", label: "Zapret 2" },
+              { value: "v1", label: "Zapret 1" },
+            ]}
+          />
+        </SettingRow>
         <SettingRow
           icon={Power}
           title="Автозапуск"
@@ -200,118 +207,43 @@ function SystemSettings() {
           <Wrench className="w-4 h-4" />
           Zapret
         </h2>
-        {!zapretInstalled ? (
-          <div className="pb-4 space-y-3">
-            <p className="text-xs text-amber-300">Zapret не установлен.</p>
+        <div className="pb-4 space-y-3">
+          {zapretMessage && (
+            <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+              <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>{zapretMessage}</span>
+            </div>
+          )}
+          <p className={cn("text-xs", zapretInstalled ? "text-zinc-400" : "text-amber-300")}>
+            {zapretInstalled
+              ? `${isV1 ? "Zapret 1" : "Zapret 2"} установлен. Стратегии доступны во вкладке «Стратегии».`
+              : `${isV1 ? "Zapret 1" : "Zapret 2"} не установлен.`}
+          </p>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => installZapret()}
-              disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm text-white"
+              disabled={loading.installZapret}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm text-white disabled:opacity-40"
             >
               <Download className="w-4 h-4" />
-              Установить zapret
+              {zapretInstalled
+                ? `Переустановить ${isV1 ? "Zapret 1" : "Zapret 2"}`
+                : `Установить ${isV1 ? "Zapret 1" : "Zapret 2"}`}
+            </button>
+            <button
+              type="button"
+              onClick={handleCheckUpdates}
+              disabled={isCheckingUpdates}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
+            >
+              <RefreshCw
+                className={cn("w-3.5 h-3.5", isCheckingUpdates && "animate-spin")}
+              />
+              Проверить релиз
             </button>
           </div>
-        ) : (
-          <>
-            <SettingRow
-              icon={Gamepad2}
-              title="Игровой фильтр"
-              description={zapretSettings?.game_filter_label ?? "—"}
-            >
-              <SelectSetting
-                value={gameValue}
-                disabled={isLoading}
-                onChange={setGameFilter}
-                options={[
-                  { value: "disabled", label: "Выключен" },
-                  { value: "all", label: "TCP и UDP" },
-                  { value: "tcp", label: "Только TCP" },
-                  { value: "udp", label: "Только UDP" },
-                ]}
-              />
-            </SettingRow>
-            <SettingRow
-              icon={Filter}
-              title="IPSet"
-              description={zapretSettings?.ipset_label ?? "—"}
-            >
-              <SelectSetting
-                value={zapretSettings?.ipset_mode ?? "any"}
-                disabled={isLoading}
-                onChange={setIpsetMode}
-                options={[
-                  { value: "loaded", label: "Загружен" },
-                  { value: "none", label: "Отключён" },
-                  { value: "any", label: "Любой" },
-                ]}
-              />
-            </SettingRow>
-            <SettingRow
-              icon={RefreshCw}
-              title="Автопроверка обновлений"
-              description="При запуске .bat"
-            >
-              <Toggle
-                enabled={zapretSettings?.auto_update_check ?? false}
-                disabled={isLoading}
-                onToggle={() =>
-                  setZapretAutoUpdate(!(zapretSettings?.auto_update_check ?? false))
-                }
-              />
-            </SettingRow>
-            <div className="py-4 border-t border-zinc-700/50 space-y-2">
-              <p className="text-xs text-zinc-500 uppercase tracking-wide">Обслуживание</p>
-              {zapretMessage && (
-                <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-                  <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span>{zapretMessage}</span>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => updateIpsetList()}
-                  disabled={isLoading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
-                >
-                  <List className="w-3.5 h-3.5" />
-                  IPSet
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateZapretHosts()}
-                  disabled={isLoading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
-                >
-                  <Globe className="w-3.5 h-3.5" />
-                  Hosts
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCheckUpdates}
-                  disabled={isCheckingUpdates}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
-                >
-                  <RefreshCw
-                    className={cn("w-3.5 h-3.5", isCheckingUpdates && "animate-spin")}
-                  />
-                  Проверить релиз
-                </button>
-                <button
-                  type="button"
-                  onClick={() => installZapret()}
-                  disabled={isLoading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Переустановить
-                </button>
-              </div>
-            </div>
-          </>
-        )}
+        </div>
       </div>
 
       {releaseInfo && (
@@ -374,7 +306,135 @@ function SystemSettings() {
           )}
         </div>
       )}
+    </div>
+  );
+}
 
+function StrategiesSettings() {
+  return (
+    <div className="space-y-6">
+      <ConnectionSettings />
+      <StrategiesPage embedded />
+    </div>
+  );
+}
+
+function GamesSettings() {
+  return (
+    <div className="space-y-6">
+      <ApexPanel />
+    </div>
+  );
+}
+
+function AdvancedSettings() {
+  const zapretBackend = useAppStore((s) => s.zapretBackend);
+  const zapretSettings = useAppStore((s) => s.zapretSettings);
+  const loading = useAppStore((s) => s.loading);
+  const zapretMessage = useAppStore((s) => s.zapretMessage);
+  const setGameFilter = useAppStore((s) => s.setGameFilter);
+  const setIpsetMode = useAppStore((s) => s.setIpsetMode);
+  const setZapretAutoUpdate = useAppStore((s) => s.setZapretAutoUpdate);
+  const updateIpsetList = useAppStore((s) => s.updateIpsetList);
+  const updateZapretHosts = useAppStore((s) => s.updateZapretHosts);
+  const isV1 = zapretBackend === "v1";
+  const gameValue =
+    zapretSettings?.game_filter === "disabled" || !zapretSettings?.game_filter
+      ? "disabled"
+      : zapretSettings.game_filter;
+
+  return (
+    <div className="space-y-6">
+      {isV1 ? (
+        <>
+          <div className="rounded-xl border border-zinc-700 bg-zinc-800/50 px-5 pb-2">
+            <h2 className="text-sm font-semibold text-white pt-4 pb-2 flex items-center gap-2">
+              <Wrench className="w-4 h-4" />
+              Legacy-настройки Zapret 1
+            </h2>
+            <SettingRow
+              icon={Gamepad2}
+              title="Игровой фильтр"
+              description={zapretSettings?.game_filter_label ?? "—"}
+            >
+              <SelectSetting
+                value={gameValue}
+                disabled={loading.settings}
+                onChange={setGameFilter}
+                options={[
+                  { value: "disabled", label: "Выключен" },
+                  { value: "all", label: "TCP и UDP" },
+                  { value: "tcp", label: "Только TCP" },
+                  { value: "udp", label: "Только UDP" },
+                ]}
+              />
+            </SettingRow>
+            <SettingRow
+              icon={Filter}
+              title="IPSet"
+              description={zapretSettings?.ipset_label ?? "—"}
+            >
+              <SelectSetting
+                value={zapretSettings?.ipset_mode ?? "any"}
+                disabled={loading.settings}
+                onChange={setIpsetMode}
+                options={[
+                  { value: "loaded", label: "Загружен" },
+                  { value: "none", label: "Отключён" },
+                  { value: "any", label: "Любой" },
+                ]}
+              />
+            </SettingRow>
+            <SettingRow
+              icon={RefreshCw}
+              title="Автопроверка обновлений"
+              description="При запуске .bat"
+            >
+              <Toggle
+                enabled={zapretSettings?.auto_update_check ?? false}
+                disabled={loading.settings}
+                onToggle={() =>
+                  setZapretAutoUpdate(!(zapretSettings?.auto_update_check ?? false))
+                }
+              />
+            </SettingRow>
+            <div className="py-4 border-t border-zinc-700/50 space-y-2">
+              <p className="text-xs text-zinc-500 uppercase tracking-wide">Обслуживание</p>
+              {zapretMessage && (
+                <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                  <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>{zapretMessage}</span>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateIpsetList()}
+                  disabled={loading.hosts}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  Обновить IPSet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateZapretHosts()}
+                  disabled={loading.hosts}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white disabled:opacity-40"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  Обновить hosts
+                </button>
+              </div>
+            </div>
+          </div>
+          <HostsPage embedded />
+        </>
+      ) : (
+        <p className="text-xs text-zinc-500">
+          Legacy-настройки, hosts и ручной IPSet доступны только для Zapret 1.
+        </p>
+      )}
       <div className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-5 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-white mb-3">fastpatch</h2>
@@ -407,6 +467,18 @@ function SystemSettings() {
             <button
               type="button"
               onClick={() =>
+                openUrl(
+                  "https://github.com/periayellowish469/zapret2-youtube-discord/releases"
+                ).catch(console.error)
+              }
+              className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Релизы Zapret 2 (youtube-discord)
+            </button>
+            <button
+              type="button"
+              onClick={() =>
                 openUrl("https://github.com/flowseal/zapret-discord-youtube/releases").catch(
                   console.error
                 )
@@ -414,7 +486,7 @@ function SystemSettings() {
               className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              Релизы zapret-discord-youtube
+              Релизы Zapret 1 (discord-youtube)
             </button>
             <button
               type="button"
@@ -436,7 +508,8 @@ function SystemSettings() {
 }
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<SettingsTab>("connection");
+  const tab = useAppStore((s) => s.settingsTab);
+  const setTab = useAppStore((s) => s.setSettingsTab);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -465,12 +538,10 @@ export function SettingsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === "connection" && (
-          <ConnectionSettings onOpenStrategies={() => setTab("strategies")} />
-        )}
-        {tab === "strategies" && <StrategiesPage embedded />}
-        {tab === "hosts" && <HostsPage embedded />}
-        {tab === "system" && <SystemSettings />}
+        {tab === "connection" && <ConnectionSettingsTab />}
+        {tab === "strategies" && <StrategiesSettings />}
+        {tab === "games" && <GamesSettings />}
+        {tab === "advanced" && <AdvancedSettings />}
       </div>
     </div>
   );

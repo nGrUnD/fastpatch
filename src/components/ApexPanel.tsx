@@ -1,7 +1,6 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  AlertCircle,
   CheckCircle,
-  ExternalLink,
   Gamepad2,
   Loader2,
   Play,
@@ -18,7 +17,8 @@ export function ApexPanel() {
     strategies,
     activeStrategy,
     zapretInstalled,
-    isLoading,
+    zapretBackend,
+    loading,
     apexStatus,
     setupApexPreset,
     testApexConnectivity,
@@ -31,9 +31,9 @@ export function ApexPanel() {
   const [isProbing, setIsProbing] = useState(false);
   const [localMsg, setLocalMsg] = useState<string | null>(null);
 
-  const apexStrategy = strategies.find(
-    (s) => s.id === "alt11-apex" || s.name.toUpperCase() === "ALT11 APEX",
-  );
+  const isV2 = zapretBackend === "v2";
+  const apexStrategy = strategies.find((s) => s.tags.includes("apex"));
+  const apexStrategyLabel = apexStrategy?.name ?? (isV2 ? "Apex Legends" : "ALT11 APEX");
 
   const handleSetup = async () => {
     setLocalMsg(null);
@@ -73,6 +73,14 @@ export function ApexPanel() {
 
   const okCount = probeResults?.filter((r) => probeHasConnectivity(r)).length ?? 0;
   const probeTotal = probeResults?.length ?? 0;
+  const presetInstalled = isV2
+    ? apexStatus?.preset_v2_installed
+    : apexStatus?.bat_installed;
+  const strategyFound = Boolean(apexStrategy);
+  const apexActive =
+    (activeStrategy &&
+      strategies.find((s) => s.id === activeStrategy.id)?.tags.includes("apex")) ||
+    activeStrategy?.name.toUpperCase().includes("APEX");
 
   return (
     <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-5 space-y-4">
@@ -83,8 +91,8 @@ export function ApexPanel() {
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-white">Apex Legends</h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Стратегия ALT11 APEX: YouTube/Discord как ALT11, list-apex и исключения EA/Respawn.
-            HTTP-проверка EA — не замена входа в лобби.
+            Отдельный игровой профиль. Default v5 для Apex не используйте: он ломает вход и
+            лобби.
           </p>
         </div>
       </div>
@@ -99,48 +107,96 @@ export function ApexPanel() {
         <p className="text-xs text-emerald-300/90">{localMsg}</p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={handleSetup}
-          disabled={isLoading || !zapretInstalled}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-600 text-xs text-white hover:bg-zinc-700 disabled:opacity-40"
-        >
-          <Wrench className="w-3.5 h-3.5" />
-          Установить пресет
-        </button>
-        <button
-          onClick={handleStartApex}
-          disabled={isLoading || !zapretInstalled}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600/80 text-xs text-white hover:bg-orange-600 disabled:opacity-40"
-        >
-          <Play className="w-3.5 h-3.5" />
-          Подключить ALT11 APEX
-        </button>
-        <button
-          onClick={handleTest}
-          disabled={isProbing || !zapretInstalled}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-600 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
-        >
-          {isProbing ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Stethoscope className="w-3.5 h-3.5" />
-          )}
-          Проверить EA
-        </button>
-        <button
-          onClick={handleAutoApex}
-          disabled={isLoading || !zapretInstalled}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-600 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
-        >
-          Подобрать (Apex)
-        </button>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+        <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2">
+          <p className="text-zinc-500">Пресет</p>
+          <p className={presetInstalled ? "text-emerald-300" : "text-amber-300"}>
+            {presetInstalled ? "Установлен" : "Нужно установить"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2">
+          <p className="text-zinc-500">Стратегия</p>
+          <p className={strategyFound ? "text-emerald-300" : "text-amber-300"}>
+            {strategyFound ? apexStrategyLabel : "Не найдена"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2">
+          <p className="text-zinc-500">Проверка EA</p>
+          <p className={probeResults ? "text-zinc-200" : "text-zinc-500"}>
+            {probeResults ? `${okCount}/${probeTotal} отвечают` : "Не запускалась"}
+          </p>
+        </div>
       </div>
 
-      {activeStrategy?.name.toUpperCase() === "ALT11 APEX" && (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+        <div className="rounded-lg border border-orange-500/25 bg-zinc-950/40 p-3 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-orange-300">Шаг 1</p>
+          <p className="text-xs text-zinc-300">Установить или обновить файлы Apex.</p>
+          <button
+            onClick={handleSetup}
+            disabled={loading.apexSetup || !zapretInstalled}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600/80 text-xs text-white hover:bg-orange-600 disabled:opacity-40"
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            Пресет Apex
+          </button>
+        </div>
+        <div className="rounded-lg border border-zinc-700 bg-zinc-950/40 p-3 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-400">Шаг 2</p>
+          <p className="text-xs text-zinc-300">Запустить выбранную стратегию.</p>
+          <button
+            onClick={handleStartApex}
+            disabled={loading.startStrategy || !zapretInstalled}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-600 text-xs text-white hover:bg-zinc-700 disabled:opacity-40"
+          >
+            <Play className="w-3.5 h-3.5" />
+            Подключить
+          </button>
+        </div>
+        <div className="rounded-lg border border-zinc-700 bg-zinc-950/40 p-3 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-400">Шаг 3</p>
+          <p className="text-xs text-zinc-300">Проверить доступность EA-сервисов.</p>
+          <button
+            onClick={handleTest}
+            disabled={isProbing || !zapretInstalled}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-600 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
+          >
+            {isProbing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Stethoscope className="w-3.5 h-3.5" />
+            )}
+            Проверить EA
+          </button>
+        </div>
+        <div className="rounded-lg border border-zinc-700 bg-zinc-950/40 p-3 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-400">Шаг 4</p>
+          <p className="text-xs text-zinc-300">Запустить Apex заново после смены пресета.</p>
+          <span className="inline-flex px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 text-xs text-zinc-300">
+            Запустите игру
+          </span>
+        </div>
+      </div>
+
+      <button
+        onClick={handleAutoApex}
+        disabled={loading.apexDetect || !zapretInstalled}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-600 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
+      >
+        Подобрать Apex автоматически
+      </button>
+
+      {apexActive && (
         <p className="text-xs text-emerald-300 flex items-center gap-1">
           <CheckCircle className="w-3.5 h-3.5" />
-          Активна стратегия ALT11 APEX
+          Активна стратегия {activeStrategy?.name ?? apexStrategyLabel}
+        </p>
+      )}
+
+      {!zapretInstalled && (
+        <p className="text-xs text-amber-300 flex items-center gap-1">
+          <AlertCircle className="w-3.5 h-3.5" />
+          Сначала установите выбранное ядро во вкладке «Подключение».
         </p>
       )}
 
@@ -167,30 +223,10 @@ export function ApexPanel() {
         </div>
       )}
 
-      {apexStatus?.tips && apexStatus.tips.length > 0 && (
-        <details className="text-xs">
-          <summary className="text-zinc-400 cursor-pointer hover:text-white">
-            Советы из Issues ({apexStatus.tips.length})
-          </summary>
-          <ul className="mt-2 space-y-2 max-h-40 overflow-y-auto">
-            {apexStatus.tips.map((tip) => (
-              <li key={tip.title} className="text-zinc-400">
-                <span className="text-zinc-200 font-medium">{tip.title}: </span>
-                {tip.body}
-                {tip.issue_url && (
-                  <button
-                    type="button"
-                    onClick={() => openUrl(tip.issue_url!)}
-                    className="ml-1 inline-flex items-center text-orange-300/80 hover:text-orange-200"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <p className="text-xs text-zinc-500">
+        HTTP-проверка EA помогает поймать блокировку сайтов EA, но не гарантирует вход в
+        лобби. После обновления пресета полностью перезапустите Apex.
+      </p>
     </div>
   );
 }

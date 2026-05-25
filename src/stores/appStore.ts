@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { splitInvokeError } from "@/lib/appErrors";
+import { anyLoading, idleLoading, type LoadingState } from "@/stores/slices/loadingSlice";
+import {
+  initialNavigationState,
+  type AppPage,
+  type SettingsTab,
+} from "@/stores/slices/navigationSlice";
+
+export type { AppPage, SettingsTab } from "@/stores/slices/navigationSlice";
+export type { LoadingState } from "@/stores/slices/loadingSlice";
 
 export interface Strategy {
   id: string;
@@ -38,6 +47,17 @@ export interface ScanAllResult {
   cancelled: boolean;
 }
 
+export interface ScanProgress {
+  current: number;
+  total: number;
+  current_id: string | null;
+  current_name: string | null;
+  elapsed_ms: number;
+  avg_ms_per_strategy?: number;
+  eta_ms?: number;
+  finished: boolean;
+}
+
 export interface ReleaseInfo {
   tag_name: string;
   name: string;
@@ -48,10 +68,15 @@ export interface ReleaseInfo {
   has_update: boolean;
 }
 
+export type ZapretBackendPref = "v2" | "v1";
+
 export interface ZapretStatus {
   installed: boolean;
   winws_path: string;
   zapret_dir: string;
+  backend: ZapretBackendPref;
+  v1_installed: boolean;
+  v2_installed: boolean;
 }
 
 export interface ZapretSettings {
@@ -84,29 +109,34 @@ export interface AppInfo {
 export interface AppPrefs {
   last_strategy_id: string | null;
   auto_connect_on_autostart: boolean;
+  zapret_backend: ZapretBackendPref;
 }
 
 export interface ApexStatus {
   zapret_installed: boolean;
+  v1_installed: boolean;
+  v2_installed: boolean;
   list_installed: boolean;
   bat_installed: boolean;
+  preset_v2_installed: boolean;
   strategy_available: boolean;
   game_filter: string;
   tips: ApexTip[];
 }
 
-export type AppPage = "home" | "settings";
-
 interface AppState {
   page: AppPage;
+  settingsTab: SettingsTab;
   appReady: boolean;
   strategies: Strategy[];
   strategyScan: Record<string, StrategyScanEntry>;
+  scanProgress: ScanProgress | null;
   isScanning: boolean;
   winwsSessionHint: string | null;
   winwsBusyHint: string | null;
   activeStrategy: ActiveStrategy | null;
   isLoading: boolean;
+  loading: LoadingState;
   error: string | null;
   releaseInfo: ReleaseInfo | null;
   updateCheckError: string | null;
@@ -118,8 +148,11 @@ interface AppState {
   zapretMessage: string | null;
   zapretSettings: ZapretSettings | null;
   appInfo: AppInfo | null;
+  zapretBackend: ZapretBackendPref;
 
   setPage: (page: AppPage) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
+  openSettings: (tab?: SettingsTab) => void;
   bootstrapApp: () => Promise<void>;
   loadAppInfo: () => Promise<void>;
   relaunchAsAdmin: () => Promise<void>;
@@ -143,6 +176,7 @@ interface AppState {
   killWinws: () => Promise<void>;
   testStrategy: (id: string) => Promise<TestResult[]>;
   scanAllStrategies: () => Promise<ScanAllResult>;
+  loadScanProgress: () => Promise<void>;
   cancelStrategyScan: () => void;
   addCustomStrategy: (displayName: string, content: string) => Promise<Strategy>;
   testMediaConnectivity: () => Promise<TestResult[]>;
@@ -154,20 +188,33 @@ interface AppState {
   setAutostart: (enabled: boolean) => Promise<void>;
   loadAppPrefs: () => Promise<void>;
   setAutoConnectOnAutostart: (enabled: boolean) => Promise<void>;
+  setZapretBackend: (backend: ZapretBackendPref) => Promise<void>;
   clearError: () => void;
   clearWinwsBusyHint: () => void;
 }
 
+function setLoadingFlag(
+  set: (partial: Partial<AppState>) => void,
+  get: () => AppState,
+  key: keyof LoadingState,
+  value: boolean
+) {
+  const loading = { ...get().loading, [key]: value };
+  set({ loading, isLoading: anyLoading(loading) });
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
-  page: "home",
+  ...initialNavigationState,
   appReady: false,
   strategies: [],
   strategyScan: {},
+  scanProgress: null,
   isScanning: false,
   winwsSessionHint: null,
   winwsBusyHint: null,
   activeStrategy: null,
   isLoading: false,
+  loading: idleLoading,
   error: null,
   releaseInfo: null,
   updateCheckError: null,
@@ -180,8 +227,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   zapretSettings: null,
   apexStatus: null,
   appInfo: null,
+  zapretBackend: "v2",
 
   setPage: (page) => set({ page }),
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
+  openSettings: (tab = "connection") => set({ page: "settings", settingsTab: tab }),
 
   bootstrapApp: async () => {
     set({ appReady: false });
@@ -237,13 +287,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   installZapret: async () => {
     if (get().zapretInstalling) return null;
+    setLoadingFlag(set, get, "installZapret", true);
     set({ zapretInstalling: true, error: null, zapretMessage: "Скачивание zapret с GitHub…" });
     try {
       const msg = await invoke<string>("install_zapret");
       set({ zapretMessage: msg, zapretInstalled: true });
       await get().loadZapretStatus();
       await get().loadStrategies();
-      await get().loadZapretSettings();
+      if (get().zapretBackend === "v1") {
+        await get().loadZapretSettings();
+      }
       await get().loadLocalVersion();
       return msg;
     } catch (e) {
@@ -252,13 +305,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       return null;
     } finally {
       set({ zapretInstalling: false });
+      setLoadingFlag(set, get, "installZapret", false);
     }
   },
 
   loadZapretStatus: async () => {
     try {
       const status = await invoke<ZapretStatus>("get_zapret_status");
-      set({ zapretInstalled: status.installed });
+      set({
+        zapretInstalled: status.installed,
+        zapretBackend: status.backend ?? get().zapretBackend,
+      });
     } catch {
       set({ zapretInstalled: false });
     }
@@ -274,7 +331,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setupApexPreset: async () => {
-    set({ isLoading: true, error: null, zapretMessage: null });
+    setLoadingFlag(set, get, "apexSetup", true);
+    set({ error: null, zapretMessage: null });
     try {
       const msg = await invoke<string>("setup_apex_preset");
       set({ zapretMessage: msg });
@@ -286,7 +344,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: String(e) });
       return null;
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "apexSetup", false);
     }
   },
 
@@ -300,7 +358,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   autoDetectApex: async () => {
-    set({ isLoading: true, error: null });
+    setLoadingFlag(set, get, "apexDetect", true);
+    set({ error: null });
     try {
       const id = await invoke<string | null>("auto_detect_apex_strategy");
       if (id) {
@@ -317,7 +376,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: String(e) });
       return null;
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "apexDetect", false);
     }
   },
 
@@ -340,7 +399,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startStrategy: async (id) => {
-    set({ isLoading: true, error: null, winwsSessionHint: null, winwsBusyHint: null });
+    setLoadingFlag(set, get, "startStrategy", true);
+    set({ error: null, winwsSessionHint: null, winwsBusyHint: null });
     try {
       await invoke("start_strategy", { id });
       await get().loadActiveStrategy();
@@ -348,12 +408,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       set(splitInvokeError(e));
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "startStrategy", false);
     }
   },
 
   killWinws: async () => {
-    set({ isLoading: true, error: null });
+    setLoadingFlag(set, get, "killWinws", true);
+    set({ error: null });
     try {
       await invoke("kill_winws");
       await get().loadActiveStrategy();
@@ -365,19 +426,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       set(splitInvokeError(e));
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "killWinws", false);
     }
   },
 
   stopStrategy: async () => {
-    set({ isLoading: true, error: null });
+    setLoadingFlag(set, get, "stopStrategy", true);
+    set({ error: null });
     try {
       await invoke("stop_strategy");
       set({ activeStrategy: null });
     } catch (e) {
       set({ error: String(e) });
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "stopStrategy", false);
     }
   },
 
@@ -394,11 +456,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const prev = get().activeStrategy;
     set({
       isScanning: true,
+      scanProgress: null,
       error: null,
       winwsSessionHint: prev
         ? `winws один на систему: на время скана отключим «${prev.name}», затем восстановим.`
         : null,
     });
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
+    const pollProgress = () => {
+      get().loadScanProgress().catch(console.error);
+    };
+    pollProgress();
+    progressTimer = setInterval(pollProgress, 1000);
     try {
       const result = await invoke<ScanAllResult>("scan_all_strategies");
       const strategyScan = Object.fromEntries(
@@ -418,12 +487,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       set({ strategyScan, winwsSessionHint: hint });
       await get().loadActiveStrategy();
+      await get().loadScanProgress();
       return result;
     } catch (e) {
       set({ ...splitInvokeError(e), winwsSessionHint: null });
       throw e;
     } finally {
+      if (progressTimer) clearInterval(progressTimer);
       set({ isScanning: false });
+      await get().loadScanProgress();
+    }
+  },
+
+  loadScanProgress: async () => {
+    try {
+      const scanProgress = await invoke<ScanProgress | null>("get_scan_progress");
+      set({ scanProgress });
+    } catch {
+      set({ scanProgress: null });
     }
   },
 
@@ -432,7 +513,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addCustomStrategy: async (displayName, content) => {
-    set({ isLoading: true, error: null });
+    setLoadingFlag(set, get, "settings", true);
+    set({ error: null });
     try {
       const strategy = await invoke<Strategy>("add_custom_strategy", {
         displayName,
@@ -445,7 +527,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: msg });
       throw e;
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "settings", false);
     }
   },
 
@@ -460,8 +542,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   autoDetect: async () => {
     const prev = get().activeStrategy;
+    setLoadingFlag(set, get, "startStrategy", true);
     set({
-      isLoading: true,
       error: null,
       winwsSessionHint: prev
         ? `Подбор стратегии: временно отключим «${prev.name}».`
@@ -475,7 +557,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         set({
           error:
-            "Рабочая стратегия не найдена (нужны Discord и YouTube < 3 с). Попробуйте ALT9 или ALT11 вручную.",
+            get().zapretBackend === "v2"
+              ? "Рабочий пресет не найден (Discord и YouTube < 3 с). Откройте «Расширенные» и выберите пресет вручную."
+              : "Рабочая стратегия не найдена (нужны Discord и YouTube < 3 с). Попробуйте ALT9 или ALT11 вручную.",
           winwsSessionHint: prev
             ? get().activeStrategy
               ? `Восстановлено: ${prev.name}`
@@ -489,7 +573,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ ...splitInvokeError(e), winwsSessionHint: null });
       return null;
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "startStrategy", false);
     }
   },
 
@@ -514,19 +598,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   checkUpdates: async () => {
-    set({ isLoading: true, updateCheckError: null });
+    setLoadingFlag(set, get, "updates", true);
+    set({ updateCheckError: null });
     try {
       const info = await invoke<ReleaseInfo>("check_for_updates");
       set({ releaseInfo: info, updateCheckError: null });
     } catch (e) {
       set({ updateCheckError: String(e) });
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "updates", false);
     }
   },
 
   applyUpdate: async (downloadUrl, tagName) => {
-    set({ isLoading: true, error: null });
+    setLoadingFlag(set, get, "updates", true);
+    set({ error: null });
     try {
       const msg = await invoke<string>("apply_update", {
         downloadUrl,
@@ -539,7 +625,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: msg });
       throw e;
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "updates", false);
     }
   },
 
@@ -567,9 +653,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         autoConnectOnAutostart: prefs.auto_connect_on_autostart,
         lastStrategyId: prefs.last_strategy_id,
+        zapretBackend: prefs.zapret_backend ?? "v2",
       });
     } catch {
-      set({ autoConnectOnAutostart: true, lastStrategyId: null });
+      set({ autoConnectOnAutostart: true, lastStrategyId: null, zapretBackend: "v2" });
+    }
+  },
+
+  setZapretBackend: async (backend) => {
+    setLoadingFlag(set, get, "settings", true);
+    set({ error: null, activeStrategy: null });
+    try {
+      await invoke("set_zapret_backend", { backend });
+      set({ zapretBackend: backend });
+      await get().loadZapretStatus();
+      await get().loadStrategies();
+      await get().loadActiveStrategy();
+      if (backend === "v1") {
+        await get().loadZapretSettings();
+        await get().loadApexStatus();
+      }
+    } catch (e) {
+      set(splitInvokeError(e));
+    } finally {
+      setLoadingFlag(set, get, "settings", false);
     }
   },
 
@@ -622,7 +729,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateIpsetList: async () => {
-    set({ isLoading: true, error: null });
+    setLoadingFlag(set, get, "hosts", true);
+    set({ error: null });
     try {
       const msg = await invoke<string>("update_ipset_list");
       set({ zapretMessage: msg });
@@ -630,19 +738,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "hosts", false);
     }
   },
 
   updateZapretHosts: async () => {
-    set({ isLoading: true, error: null, zapretMessage: null });
+    setLoadingFlag(set, get, "hosts", true);
+    set({ error: null, zapretMessage: null });
     try {
       const msg = await invoke<string>("update_zapret_hosts_file");
       set({ zapretMessage: msg, error: null });
     } catch (e) {
       set({ error: String(e), zapretMessage: null });
     } finally {
-      set({ isLoading: false });
+      setLoadingFlag(set, get, "hosts", false);
     }
   },
 

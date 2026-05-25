@@ -2,11 +2,11 @@ import { Info, X } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 
 export function WinwsSessionBanner() {
-  const { winwsSessionHint, isScanning, isLoading } = useAppStore();
+  const { winwsSessionHint, isScanning, loading } = useAppStore();
 
   if (!winwsSessionHint) return null;
 
-  const busy = isScanning || isLoading;
+  const busy = isScanning || loading.startStrategy || loading.installZapret;
 
   return (
     <div

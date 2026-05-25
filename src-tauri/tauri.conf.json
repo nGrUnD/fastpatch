@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "fastpatch",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "identifier": "com.fastpatch.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -32,7 +32,8 @@
     "resources": {
       "../strategies.json": "strategies.json",
       "icons/icon.ico": "icon.ico",
-      "../resources/zapret-extra/": "zapret-extra/"
+      "../resources/zapret-extra/": "zapret-extra/",
+      "../resources/zapret2-extra/": "zapret2-extra/"
     },
     "icon": [
       "icons/icon.png",

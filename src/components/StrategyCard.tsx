@@ -8,7 +8,7 @@ import {
   type TestResult,
   useAppStore,
 } from "@/stores/appStore";
-import { TagBadge } from "./TagBadge";
+import { TagBadge, visibleTags } from "./TagBadge";
 
 interface StrategyCardProps {
   strategy: Strategy;
@@ -81,7 +81,7 @@ export function StrategyCard({ strategy, isActive, scanEntry }: StrategyCardProp
           </div>
           <p className="text-xs text-zinc-400 mb-2">{strategy.description}</p>
           <div className="flex flex-wrap gap-1">
-            {strategy.tags.map((tag) => (
+            {visibleTags(strategy.tags).map((tag) => (
               <TagBadge key={tag} tag={tag} />
             ))}
           </div>
