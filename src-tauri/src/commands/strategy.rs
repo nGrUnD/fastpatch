@@ -7,8 +7,8 @@ use super::probe::{
 use super::strategy_loader;
 use super::preset_loader;
 use super::strategy_runner::{
-    find_winws_pid, run_zapret_preamble, spawn_strategy_bat_with_options, stop_all_winws_and_wait,
-    SpawnOptions, WINWS_BUSY_PREFIX, WINWS_FAST_WARMUP_MS,
+    find_winws_pid, is_winws_busy_error, run_zapret_preamble, spawn_strategy_bat_with_options,
+    stop_all_winws_and_wait, SpawnOptions, WINWS_BUSY_PREFIX, WINWS_FAST_WARMUP_MS,
 };
 use super::zapret2_runner::{find_winws2_pid, spawn_preset_with_options};
 use super::zapret_backend::{self, ZapretBackend};
@@ -248,6 +248,8 @@ pub fn get_active_strategy(state: State<ProcessState>) -> Option<ActiveStrategy>
 }
 
 pub fn start_strategy_inner(id: &str, state: &ProcessState) -> Result<(), String> {
+    ensure_engine()?;
+    zapret_backend::preflight_engine_spawn()?;
     let strategies = get_strategies()?;
     let strategy = strategies
         .iter()
@@ -382,6 +384,7 @@ pub async fn test_strategy(id: String, state: State<'_, ProcessState>) -> Result
 #[tauri::command]
 pub async fn auto_detect_strategy(state: State<'_, ProcessState>) -> Result<Option<String>, String> {
     ensure_engine()?;
+    zapret_backend::preflight_engine_spawn()?;
     let strategies = get_strategies()?;
     let ordered = strategies_for_autodetect(&strategies);
 
@@ -398,8 +401,15 @@ pub async fn auto_detect_strategy(state: State<'_, ProcessState>) -> Result<Opti
         let pid = match spawn_strategy_with_options(strategy, opts) {
             Ok(p) => p,
             Err(e) => {
+                if is_winws_busy_error(&e) {
+                    stop_child(&state);
+                    if paused.is_some() {
+                        resume_session(&state, paused, &strategies, SpawnOptions::default());
+                    }
+                    return Err(e);
+                }
                 eprintln!("[fastpatch] skip {}: {e}", strategy.source_bat);
-                stop_all_winws_and_wait(3500);
+                zapret_backend::kill_all_processes_and_wait(3500);
                 continue;
             }
         };
@@ -579,8 +589,24 @@ pub async fn scan_all_strategies(
         let pid = match spawn_strategy_with_options(strategy, opts) {
             Ok(p) => p,
             Err(e) => {
+                if is_winws_busy_error(&e) {
+                    stop_child(&state);
+                    finish_scan_progress(&progress);
+                    let restored_previous = resume_session(
+                        &state,
+                        paused,
+                        &strategies,
+                        SpawnOptions::default(),
+                    );
+                    return Ok(ScanAllResult {
+                        entries,
+                        restored_previous,
+                        previous_name,
+                        cancelled: true,
+                    });
+                }
                 eprintln!("[fastpatch] scan skip {}: {e}", strategy.source_bat);
-                stop_all_winws_and_wait(4000);
+                zapret_backend::kill_all_processes_and_wait(4000);
                 let err = TestResult {
                     strategy_id: strategy.id.clone(),
                     target: "spawn".into(),
@@ -687,6 +713,7 @@ pub async fn test_media_connectivity(
 #[tauri::command]
 pub async fn auto_detect_apex_strategy(state: State<'_, ProcessState>) -> Result<Option<String>, String> {
     ensure_engine()?;
+    zapret_backend::preflight_engine_spawn()?;
     let strategies = get_strategies()?;
     let apex_only: Vec<_> = strategies
         .iter()
@@ -712,8 +739,15 @@ pub async fn auto_detect_apex_strategy(state: State<'_, ProcessState>) -> Result
         let pid = match spawn_strategy_with_options(strategy, opts) {
             Ok(p) => p,
             Err(e) => {
+                if is_winws_busy_error(&e) {
+                    stop_child(&state);
+                    if paused.is_some() {
+                        resume_session(&state, paused, &strategies, SpawnOptions::default());
+                    }
+                    return Err(e);
+                }
                 eprintln!("[fastpatch] apex skip {}: {e}", strategy.source_bat);
-                stop_all_winws_and_wait(3500);
+                zapret_backend::kill_all_processes_and_wait(3500);
                 continue;
             }
         };

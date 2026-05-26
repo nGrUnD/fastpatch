@@ -419,8 +419,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       await invoke("kill_winws");
       await get().loadActiveStrategy();
       set({
-        winwsBusyHint:
-          "Задача winws снята. Снова нажмите «Подключить» для нужной стратегии.",
+        winwsBusyHint: null,
+        error: null,
         activeStrategy: null,
       });
     } catch (e) {

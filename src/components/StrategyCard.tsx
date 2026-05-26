@@ -92,7 +92,11 @@ export function StrategyCard({ strategy, isActive, scanEntry }: StrategyCardProp
             type="button"
             onClick={handleTest}
             disabled={actionsDisabled}
-            title={nonWorking ? "Не работает" : "Тест"}
+            title={
+              nonWorking
+                ? "Не работает"
+                : "Проверка Discord/YouTube (не режим отладки)"
+            }
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
           >
             {isTesting ? (

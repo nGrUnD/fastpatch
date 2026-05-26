@@ -12,6 +12,7 @@ pub struct Strategy {
 
 pub mod apex;
 pub mod autostart_connect;
+pub mod engine_process;
 pub mod hosts;
 pub mod preset_loader;
 pub mod probe;

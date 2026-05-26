@@ -1,5 +1,8 @@
 //! Launch/stop winws: преамбула service.bat скрыто, winws без окна консоли.
 
+use crate::commands::engine_process::{is_pid_running, kill_image};
+
+pub use crate::commands::engine_process::find_winws_pid;
 use crate::commands::strategy_loader;
 use crate::paths::zapret_dir;
 use crate::win_process::spawn_winws;
@@ -15,10 +18,21 @@ pub const WINWS_FAST_WARMUP_MS: u64 = 800;
 /// Префикс для UI: жёлтое предупреждение + кнопка «Снять задачу».
 pub const WINWS_BUSY_PREFIX: &str = "WINWS_BUSY:";
 
+pub fn is_winws_busy_error(err: &str) -> bool {
+    err.starts_with(WINWS_BUSY_PREFIX)
+}
+
 pub fn winws_busy_message(detail: &str) -> String {
     format!(
         "{WINWS_BUSY_PREFIX}winws.exe уже запущен ({detail}). \
          Нажмите «Снять задачу» ниже и снова подключите нужную стратегию."
+    )
+}
+
+pub fn winws_start_failed_message(detail: &str) -> String {
+    format!(
+        "winws.exe не запустился ({detail}). \
+         Нажмите «Снять задачу», проверьте WinDivert и попробуйте другую стратегию."
     )
 }
 
@@ -100,13 +114,7 @@ pub fn run_zapret_preamble(root: &Path, minimal: bool) {
 
 /// Stop every winws.exe instance (as in test zapret.ps1).
 pub fn stop_all_winws() {
-    #[cfg(windows)]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/IM", "winws.exe", "/F"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-    }
+    kill_image("winws.exe");
 }
 
 /// winws — один экземпляр; ждём завершения перед следующим запуском.
@@ -128,32 +136,6 @@ pub fn stop_all_winws_and_wait(max_wait_ms: u64) {
     {
         let _ = max_wait_ms;
     }
-}
-
-pub fn find_winws_pid() -> Option<u32> {
-    #[cfg(windows)]
-    {
-        let output = Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq winws.exe", "/FO", "CSV", "/NH"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .ok()?;
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.contains("Image Name") {
-                continue;
-            }
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 2 {
-                let pid_str = parts[1].trim().trim_matches('"');
-                if let Ok(pid) = pid_str.parse::<u32>() {
-                    return Some(pid);
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Запуск стратегии: service.bat скрыто + winws.exe без консоли (не через `start` в .bat).
@@ -198,23 +180,31 @@ pub fn spawn_strategy_bat_with_options(source_bat: &str, opts: SpawnOptions) -> 
         }
 
         let bin_dir = root.join("bin");
-        let spawn_err = spawn_winws(&winws_exe, &argv, &bin_dir).err();
-        if let Some(e) = spawn_err {
-            if find_winws_pid().is_some() {
-                return Err(winws_busy_message(&e));
+        let pid = match spawn_winws(&winws_exe, &argv, &bin_dir) {
+            Ok(pid) => pid,
+            Err(e) => {
+                if find_winws_pid().is_some() {
+                    return Err(winws_busy_message(&e));
+                }
+                return Err(winws_start_failed_message(&e));
             }
-            return Err(e);
-        }
+        };
 
         thread::sleep(Duration::from_millis(opts.warmup_ms));
 
-        let pid = find_winws_pid().ok_or_else(|| {
-            winws_busy_message(&format!(
-                "после {source_bat} процесс не появился — WinDivert может быть занят"
-            ))
-        })?;
+        if is_pid_running(pid) {
+            return Ok(pid);
+        }
 
-        Ok(pid)
+        if find_winws_pid().is_some() {
+            return Err(winws_busy_message(
+                "обнаружен другой экземпляр winws после запуска",
+            ));
+        }
+
+        return Err(winws_start_failed_message(&format!(
+            "после {source_bat} процесс завершился (PID {pid}) — WinDivert может быть занят"
+        )));
     }
 
     #[cfg(not(windows))]
