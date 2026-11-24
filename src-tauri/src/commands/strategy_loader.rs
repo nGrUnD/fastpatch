@@ -3,13 +3,55 @@ use crate::commands::apex;
 use crate::paths::zapret_dir;
 use std::path::Path;
 
+const POE_TCP_PORTS: &str = "20482,20494";
+
 pub fn load_strategies() -> Result<Vec<Strategy>, String> {
     let root = zapret_dir();
     if root.join("bin").join("winws.exe").is_file() {
         let _ = apex::ensure_apex_assets();
+        ensure_poe_strategies(&root);
         return scan_bat_strategies(&root);
     }
     load_strategies_json_fallback()
+}
+
+fn ensure_poe_strategies(root: &Path) {
+    for alt in ["ALT9", "ALT12"] {
+        let source = root.join(format!("general ({alt}).bat"));
+        let destination = root.join(format!("general ({alt} Path of Exile).bat"));
+        let Ok(content) = std::fs::read_to_string(source) else {
+            continue;
+        };
+        let Some(copy) = add_poe_profile(&content) else {
+            eprintln!("[fastpatch] {alt}: не найдена строка запуска winws для Path of Exile");
+            continue;
+        };
+        if std::fs::read_to_string(&destination).as_deref().ok() == Some(copy.as_str()) {
+            continue;
+        }
+        if let Err(e) = std::fs::write(&destination, copy) {
+            eprintln!("[fastpatch] {}: {e}", destination.display());
+        }
+    }
+}
+
+fn add_poe_profile(content: &str) -> Option<String> {
+    let (before_ports, after_flag) = content.split_once(" --wf-tcp=")?;
+    if !before_ports.lines().last()?.trim_end().ends_with("winws.exe\"") {
+        return None;
+    }
+    let (launch_tail, profiles) = after_flag.split_once('\n')?;
+    if !launch_tail.trim_end().ends_with('^') {
+        return None;
+    }
+    let newline = if launch_tail.ends_with('\r') { "\r\n" } else { "\n" };
+    let (ports, arguments) = launch_tail.split_at(launch_tail.find(char::is_whitespace)?);
+    // The dedicated profile must precede the broader GameFilterTCP profile.
+    Some(format!(
+        "{before_ports} --wf-tcp={ports},{POE_TCP_PORTS}{arguments}\n\
+         --filter-tcp={POE_TCP_PORTS} --dpi-desync=multisplit --dpi-desync-any-protocol=1 \
+         --dpi-desync-split-pos=1 --dpi-desync-cutoff=n3 --new ^{newline}{profiles}"
+    ))
 }
 
 fn scan_bat_strategies(root: &Path) -> Result<Vec<Strategy>, String> {
@@ -261,7 +303,7 @@ fn parse_winws_args(content: &str, root: &Path) -> Result<String, String> {
             if let Some(pos) = trimmed.find("winws.exe") {
                 let after = trimmed[pos + "winws.exe".len()..].trim();
                 let after = after.strip_prefix('"').unwrap_or(after);
-                chunk.push_str(after);
+                chunk.push_str(after.trim_end_matches('^').trim_end());
             }
             continue;
         }
@@ -339,6 +381,37 @@ pub fn split_command_line(line: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poe_profile_precedes_game_filter_in_winws_arguments() {
+        let base = concat!(
+            "@echo off\r\n",
+            "start \"zapret: %~n0\" /min \"%BIN%winws.exe\" --wf-tcp=80,443,%GameFilterTCP% --wf-udp=443 ^\r\n",
+            "--filter-tcp=%GameFilterTCP% --dpi-desync=fake\r\n",
+        );
+        let copy = add_poe_profile(base).unwrap();
+        assert!(copy.contains("--new ^\r\n--filter-tcp=%GameFilterTCP%"));
+
+        let root = Path::new(".");
+        let base_args = split_command_line(&parse_winws_args(base, root).unwrap());
+        let args = split_command_line(&parse_winws_args(&copy, root).unwrap());
+        let (_, tcp_ports, _) = game_filter_ports(root);
+        assert_eq!(args[0], format!("--wf-tcp=80,443,{tcp_ports},20482,20494"));
+        assert_eq!(args[1], base_args[1]);
+        assert_eq!(
+            args[2..8],
+            [
+                "--filter-tcp=20482,20494",
+                "--dpi-desync=multisplit",
+                "--dpi-desync-any-protocol=1",
+                "--dpi-desync-split-pos=1",
+                "--dpi-desync-cutoff=n3",
+                "--new",
+            ]
+        );
+        assert_eq!(args[8..], base_args[2..]);
+        assert!(!args.iter().any(|arg| arg == "^"));
+    }
 
     #[test]
     fn split_command_line_keeps_quoted_paths() {
